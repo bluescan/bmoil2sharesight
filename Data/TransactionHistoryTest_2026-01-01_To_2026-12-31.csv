@@ -2,40 +2,40 @@
 Transaction Date,Settlement Date,Activity Description,Description,Symbol,Quantity,Price,Price Currency,Total Amount,Total Currency
 ----------------,---------------,--------------------,-----------,------,--------,-----,--------------,------------,--------------
 2026-12-31,2026-12-31,Buy,IShares MSCI Emerging Mkts ETF,VWO,43,58.90,USD,-2532.70,USD
-2026-12-31,2026-12-31,Foreign Exchange,BUY USD @ 1.4475,,0,0,,-1941,CAD
-2026-12-31,2026-12-31,Foreign Exchange,BUY USD @ 1.4475,,0,0,,1340.93,USD
+2026-12-31,2026-12-31,Foreign Exchange,BUY USD @ 1.4612,,0,0,,-2450,CAD
+2026-12-31,2026-12-31,Foreign Exchange,BUY USD @ 1.4612,,0,0,,1676.70,USD
 2026-12-31,2026-12-31,Interest,BMO Money Market Fund,CAMF,1,0,,0.10,CAD
 2026-12-31,2026-12-31,Interest,BMO S&P 500 Index ETF (Hdg),SPYM,275,0,,57.47,CAD
 2026-12-25,2026-12-25,Non resident tax,Schwab US Dividend Equity,SCHD,140,0,,-5.11,USD
 2026-12-25,2026-12-25,Dividend,Schwab US Dividend Equity,SCHD,140,0,,34.05,USD
 2026-12-18,2026-12-18,Interest,Global X NASDAQ 100 Covered,QYLD,295,0,,69.33,CAD
 2026-12-14,2026-12-14,Interest,Nasdaq Equity Premium Incom,JEPQ,3100,0,,601.38,CAD
-2026-12-14,2026-12-14,Online banking,TF 8321#5590-114,,0,0,,-5000,CAD
+2026-12-14,2026-12-14,Online banking,TF 8321#5590-114,,0,0,,-3333,CAD
 2026-12-14,2026-12-15,Buy,Global X NASDAQ 100 Covered,QYLD,175,39.85,CAD,-6983.70,CAD
 2026-12-07,2026-12-07,Interest,Range Global Dividend,XYLD,20000,0,,5400.14,CAD
 2026-12-01,2026-12-01,Interest,BMO Money Market Fund,CAMF,1,0,,0.10,CAD
 2026-11-25,2026-11-26,Buy,Global X NASDAQ 100 Covered,QYLD,115,39.85,CAD,-4592.70,CAD
 2026-11-18,2026-11-18,Interest,Nasdaq Equity Premium Incom,JEPQ,3100,0,,598.35,CAD
-2026-11-12,2026-11-12,Foreign Exchange,BUY USD @ 1.4156,,0,0,,2140.44,USD
+2026-11-12,2026-11-12,Foreign Exchange,BUY USD @ 1.3987,,0,0,,2573.82,USD
 2026-11-12,2026-11-16,Buy,Global X NASDAQ 100 Covered,QYLD,180,39.85,CAD,-7182.95,CAD
 2026-11-12,2026-11-16,Buy,SPDR S&P 500 BuyWrite,SPYD,18,41.20,USD,-751.55,USD
 2026-11-12,2026-11-16,Buy,Advanced Micro Devices,AMD,6,137.92,USD,-837.47,USD
-2026-11-12,2026-11-12,Foreign Exchange,BUY USD @ 1.4156,,0,0,,-3030,CAD
+2026-11-12,2026-11-12,Foreign Exchange,BUY USD @ 1.3987,,0,0,,-3600,CAD
 2026-11-05,2026-11-05,Interest,Range Global Dividend,XYLD,20000,0,,5400.14,CAD
 2026-10-30,2026-10-30,Interest,BMO Money Market Fund,CAMF,1,0,,0.10,CAD
 2026-10-26,2026-10-29,Buy,Advanced Micro Devices,AMD,3,137.92,USD,-423.71,USD
-2026-10-26,2026-10-26,Foreign Exchange,BUY USD @ 1.4304,,0,0,,587.25,USD
-2026-10-26,2026-10-26,Foreign Exchange,BUY USD @ 1.4304,,0,0,,-840,CAD
+2026-10-26,2026-10-26,Foreign Exchange,BUY USD @ 1.4429,,0,0,,866.31,USD
+2026-10-26,2026-10-26,Foreign Exchange,BUY USD @ 1.4429,,0,0,,-1250,CAD
 2026-10-19,2026-10-19,Adjustment,SD202603ADJ,,0,0,,822.5,CAD
 2026-10-13,2026-10-13,Transfer,Bank of Nova Scotia,BNS,-10,0,,0,CAD
 2026-10-13,2026-10-13,Transfer,Bank of Nova Scotia,BNS,10,0,,0,USD
 2026-10-07,2026-10-08,Buy,Advanced Micro Devices,AMD,13,137.92,USD,-1802.91,USD
 2026-10-07,2026-10-08,Sell,Bank of Nova Scotia,BNS,-10,211.78,USD,2107.85,USD
 2026-10-07,2026-10-08,Buy,Bank of Nova Scotia,BNS,10,297.78,CAD,-2987.75,CAD
-2026-09-30,2026-09-30,Online banking,TF 6470#2088-452,,0,0,,4500,CAD
-2026-09-24,2026-09-24,Foreign Exchange,BUY USD @ 1.4360,,0,0,,-980,CAD
+2026-09-30,2026-09-30,Online banking,TF 6470#2088-452,,0,0,,6789,CAD
+2026-09-24,2026-09-24,Foreign Exchange,BUY USD @ 1.4194,,0,0,,-1580,CAD
 2026-09-24,2026-09-25,Buy,Advanced Micro Devices,AMD,3,137.92,USD,-423.71,USD
-2026-09-24,2026-09-24,Foreign Exchange,BUY USD @ 1.4360,,0,0,,682.45,USD
+2026-09-24,2026-09-24,Foreign Exchange,BUY USD @ 1.4194,,0,0,,1113.15,USD
 2026-09-17,2026-09-17,Dividend,CrowdStrike Holdings,CRWD,10,0,,9.39,USD
 2026-09-17,2026-09-17,Non resident tax,CrowdStrike Holdings,CRWD,10,0,,-1.97,USD
 2026-09-11,2026-09-11,Interest,Nasdaq Equity Premium Incom,JEPQ,3100,0,,595.23,CAD
@@ -51,8 +51,8 @@ Transaction Date,Settlement Date,Activity Description,Description,Symbol,Quantit
 2026-08-25,2026-08-25,Interest,BMO S&P 500 Index ETF (Hdg),SPYM,275,0,,56.92,CAD
 2026-08-18,2026-08-18,Non resident tax,Schwab US Dividend Equity,SCHD,115,0,,-4.23,USD
 2026-08-18,2026-08-18,Dividend,Schwab US Dividend Equity,SCHD,115,0,,28.19,USD
-2026-08-12,2026-08-12,Foreign Exchange,BUY USD @ 1.4227,,0,0,,14.06,USD
-2026-08-12,2026-08-12,Foreign Exchange,BUY USD @ 1.4227,,0,0,,-20,CAD
+2026-08-12,2026-08-12,Foreign Exchange,BUY USD @ 1.4483,,0,0,,65.59,USD
+2026-08-12,2026-08-12,Foreign Exchange,BUY USD @ 1.4483,,0,0,,-95,CAD
 2026-08-06,2026-08-07,Buy,SPDR S&P 500 BuyWrite,SPYD,203,41.20,USD,0,USD
 2026-08-06,2026-08-07,Buy,SPDR S&P 500 BuyWrite,SPYD,189,41.20,USD,-16160.23,USD
 2026-08-06,2026-08-07,Buy,Schwab US Dividend Equity,SCHD,115,83.40,USD,-9600.95,USD
@@ -63,7 +63,7 @@ Transaction Date,Settlement Date,Activity Description,Description,Symbol,Quantit
 2026-08-06,2026-08-07,Buy,Bank of Nova Scotia,BNS,136,276.33,CAD,-37589.38,CAD
 2026-07-30,2026-07-31,Buy,Range Global Dividend,XYLD,10500,11.24,CAD,-118029.95,CAD
 2026-07-24,2026-07-24,Dividend,IShares MSCI Brazil ETF,EWZ,450,0,,89.99,CAD
-2026-07-24,2026-07-24,Online banking,TF 8321#5590-114,,0,0,,-9500,CAD
+2026-07-24,2026-07-24,Online banking,TF 8321#5590-114,,0,0,,-2500,CAD
 2026-07-24,2026-07-27,Sell,IShares Russell 2000 Growth,IWF,-7626,33.40,CAD,254698.45,CAD
 2026-07-24,2026-07-27,Sell,IShares MSCI Brazil ETF,EWZ,-375,38.35,CAD,14372.86,CAD
 2026-07-24,2026-07-27,Sell,IShares MSCI Brazil ETF,EWZ,-75,38.35,CAD,2874.69,CAD
@@ -75,7 +75,7 @@ Transaction Date,Settlement Date,Activity Description,Description,Symbol,Quantit
 2026-07-13,2026-07-13,Interest,BMO Money Market Fund,CAMF,400,0,,38.00,CAD
 2026-07-07,2026-07-07,Dividend,IShares MSCI Brazil ETF,EWZ,450,0,,89.99,CAD
 2026-06-30,2026-06-30,Interest,IShares Russell 2000 Growth,IWF,7626,0,,1387.82,CAD
-2026-06-24,2026-06-24,Online banking,TF 8321#5590-114,,0,0,,-7400,CAD
+2026-06-24,2026-06-24,Online banking,TF 8321#5590-114,,0,0,,-8880,CAD
 2026-06-18,2026-06-18,Interest,IShares Russell 2000 Growth,IWF,7626,0,,1387.82,CAD
 2026-06-18,2026-06-18,Interest,Nasdaq Equity Premium Incom,JEPQ,3100,0,,573.52,CAD
 2026-06-11,2026-06-11,Interest,Range Global Dividend,XYLD,9500,0,,2564.91,CAD
@@ -87,16 +87,16 @@ Transaction Date,Settlement Date,Activity Description,Description,Symbol,Quantit
 2026-06-05,2026-06-05,Transfer,Bank of Nova Scotia,BNS,-10,0,,0,CAD
 2026-06-05,2026-06-05,Transfer,Bank of Nova Scotia,BNS,10,0,,0,USD
 2026-06-05,2026-06-05,Interest,BMO Money Market Fund,CAMF,400,0,,40.00,CAD
-2026-05-29,2026-05-29,Online banking,TF 6470#2088-452,,0,0,,21000,CAD
+2026-05-29,2026-05-29,Online banking,TF 6470#2088-452,,0,0,,14000,CAD
 2026-05-25,2026-05-28,Buy,IShares Russell 2000 Growth,IWF,60,33.40,CAD,-2013.95,CAD
 2026-05-19,2026-05-19,Interest,IShares Russell 2000 Growth,IWF,7566,0,,1361.89,CAD
-2026-05-12,2026-05-12,Online banking,TF 8321#5590-114,,0,0,,-7500,CAD
+2026-05-12,2026-05-12,Online banking,TF 8321#5590-114,,0,0,,-5510,CAD
 2026-05-06,2026-05-06,Interest,IShares Russell 2000 Growth,IWF,7566,0,,1361.89,CAD
 2026-05-06,2026-05-06,Interest,Nasdaq Equity Premium Incom,JEPQ,3100,0,,567.33,CAD
 2026-04-29,2026-04-29,Interest,Range Global Dividend,XYLD,9500,0,,2564.91,CAD
 2026-04-23,2026-04-27,Buy,BMO Money Market Fund,CAMF,400,49.84,CAD,-19945.95,CAD
 2026-04-23,2026-04-23,Interest,BMO S&P 500 Index ETF (Hdg),SPYM,275,0,,58.03,CAD
-2026-04-17,2026-04-17,Online banking,TF 6470#2088-452,,0,0,,33000,CAD
+2026-04-17,2026-04-17,Online banking,TF 6470#2088-452,,0,0,,23230,CAD
 2026-04-10,2026-04-13,Buy,BMO Nasdaq-100 Index (Hdg),ZQQ,4,20.40,CAD,-91.55,CAD
 2026-04-06,2026-04-06,Interest,IShares Russell 2000 Growth,IWF,3566,0,,648.99,CAD
 2026-03-30,2026-03-30,Transfer,Bank of Nova Scotia,BNS,-30,0,,0,CAD
@@ -111,7 +111,7 @@ Transaction Date,Settlement Date,Activity Description,Description,Symbol,Quantit
 2026-03-24,2026-03-25,Buy,BMO Nasdaq-100 Index (Hdg),ZQQ,2,20.40,CAD,-40.95,CAD
 2026-03-24,2026-03-25,Buy,BMO Nasdaq-100 Index (Hdg),ZQQ,140,20.40,CAD,-2865.80,CAD
 2026-03-24,2026-03-25,Buy,BMO S&P 500 Index ETF (Hdg),SPYM,267,91.30,CAD,-24377.10,CAD
-2026-03-24,2026-03-24,Online banking,TF 6470#2088-452,,0,0,,10000,CAD
+2026-03-24,2026-03-24,Online banking,TF 6470#2088-452,,0,0,,12345,CAD
 2026-03-24,2026-03-24,Exchange,1000THS VANGUARD NASDAQ 100,,,-1,0,,0,CAD
 2026-03-18,2026-03-18,Redemption,1000THS VANGUARD NASDAQ 100,,,-129,0,,0,CAD
 2026-03-11,2026-03-12,Sell,Nasdaq-100 Index ETF,QQQX,-15000,19.96,CAD,299320.00,CAD
@@ -131,11 +131,11 @@ Transaction Date,Settlement Date,Activity Description,Description,Symbol,Quantit
 2026-02-03,2026-02-06,Buy,BMO Nasdaq-100 Index (Hdg),ZQQ,4,20.40,CAD,-91.55,CAD
 2026-02-03,2026-02-06,Buy,BMO S&P 500 Index ETF (Hdg),SPYM,8,91.30,CAD,-730.40,CAD
 2026-01-28,2026-01-29,Buy,Range Global Dividend,XYLD,162,12.45,CAD,0,CAD
-2026-01-28,2026-01-28,Online banking,TF 6470#2088-452,,0,0,,20000,CAD
+2026-01-28,2026-01-28,Online banking,TF 6470#2088-452,,0,0,,13000,CAD
 2026-01-28,2026-01-29,Buy,Range Global Dividend,XYLD,5,12.45,CAD,-1733.82,CAD
 2026-01-28,2026-01-29,Buy,Range Global Dividend,XYLD,810,12.45,CAD,-8420.38,CAD
-2026-01-21,2026-01-21,Online banking,TF 6470#2088-452,,0,0,,24500,CAD
+2026-01-21,2026-01-21,Online banking,TF 6470#2088-452,,0,0,,34500,CAD
 2026-01-15,2026-01-15,Interest,IShares Russell 2000 Growth,IWF,3500,0,,630.00,CAD
 2026-01-08,2026-01-09,Buy,Nasdaq Equity Premium Incom,JEPQ,150,78.20,CAD,-11739.95,CAD
 2026-01-08,2026-01-09,Buy,Range Global Dividend,XYLD,216,12.45,CAD,-2699.15,CAD
-2026-01-02,2026-01-02,Online banking,TF 6470#2088-452,,0,0,,10000,CAD
+2026-01-02,2026-01-02,Online banking,TF 6470#2088-452,,0,0,,20000,CAD
