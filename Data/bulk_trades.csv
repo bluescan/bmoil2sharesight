@@ -1,0 +1,11 @@
+Trade Date,Instrument Code,Market Code,Quantity,Price,Transaction Type,Exchange Rate (optional),Brokerage (optional),Brokerage Currency (optional),Comments (optional)
+2021-01-21,VAS,ASX,100,87.07,BUY,,,,"A sample comment, which will be stored in the comments field for this transaction"
+2021-05-14,RYM,NZX,2000,14.65,BUY,,,,
+2010-06-29,TSLA,NASDAQ,300,23.89,BUY,0.7088527604,2.345,USD,
+2020-05-05,FNZ,NZX,276,2.699,BUY,,,,
+2020-07-10,IVV,ASX,499,289.48,BUY,0.9461716921,4.116,AUD,
+2000-08-04,PLA0100AU,FUNDAU,100,1.0001,BUY,,,,
+2007-08-23,BABA,NYSE,35000,61.78,BUY,0.6998081012,,USD,
+2009-02-04,SPK,NZX,10000,0.08,BUY,,,,
+2020-09-08,SPK,NZX,10000,18.28,SELL,,,,
+2021-10-29,BP,LSE,1,3.502,BUY,,,GBP,
