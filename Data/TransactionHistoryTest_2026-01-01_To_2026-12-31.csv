@@ -54,7 +54,7 @@ Transaction Date,Settlement Date,Activity Description,Description,Symbol,Quantit
 2026-08-12,2026-08-12,Foreign Exchange,BUY USD @ 1.4483,,0,0,,65.59,USD
 2026-08-12,2026-08-12,Foreign Exchange,BUY USD @ 1.4483,,0,0,,-95,CAD
 2026-08-06,2026-08-07,Buy,State Street SPDR Portfolio S&P 500 High Dividend ETF,SPYD,203,41.20,USD,0,USD
-2026-08-06,2026-08-07,Buy,State Street SPDR Portfolio S&P 500 High Dividend ETF,SPYD,189,41.20,USD,-16160.23,USD
+2026-08-06,2026-08-07,Buy,State Street SPDR Portfolio S&P 500 High Dividend ETF,SPYD,189,41.20,USD,-16160.35,USD
 2026-08-06,2026-08-07,Buy,Schwab US Dividend Equity ETF,SCHD,115,83.40,USD,-9600.95,USD
 2026-08-06,2026-08-06,Transfer,Bank of Nova Scotia,BNS,160,0,,0,USD
 2026-08-06,2026-08-07,Sell,Bank of Nova Scotia,BNS,-160,198.30,USD,31718.05,USD
