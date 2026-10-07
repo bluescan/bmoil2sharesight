@@ -33,9 +33,11 @@
 // uses to finalize the order, the one carrying the order's total -- falling back to the first zero-total leg, then to
 // the last leg, and is left blank when it is zero. A standalone leg is just a single-leg group.
 //
-// Ignored tickers (eg. Norbert's Gambit vehicles): the --ignore option drops a symbol entirely and appends it as a
-// plain line to the bmoil2sharesight.cfg config file (next to the executable, alongside the market codes) so it is
-// remembered for future runs.
+// Ignored tickers (eg. Norbert's Gambit vehicles): a symbol dropped from the output is recorded as a plain line in the
+// bmoil2sharesight.cfg config file (next to the executable, alongside the market codes) so it is remembered for future
+// runs. Norbert's Gambit is detected automatically -- the same ticker bought in one currency and sold in another on the
+// same day with matching share counts (eg. buy a CUS/DR in CAD on the TSX and sell it in USD on a US venue) -- and the
+// tool asks whether to ignore it. A "keep" answer is recorded with a leading '!' so the same ticker is not asked again.
 //
 // Copyright (c) 2026 Tristan Grimmer.
 // Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby
@@ -106,48 +108,54 @@ namespace BMO2SS
 {
 	tCmdLine::tParam ParamInput("Investorline transaction-history CSV to read (input)", "Input", 1);
 	tCmdLine::tParam ParamOutput("ShareSight bulk-trades CSV to write (output). Defaults to the input name with _sharesight.csv.", "Output", 2);
-	tCmdLine::tOption OptionIgnore("Ignore a ticker symbol entirely (eg. a Norbert's Gambit vehicle like DXYZ). Repeatable; the ticker is also saved to the bmoil2sharesight.cfg config file next to the executable so it is remembered for future runs.", "ignore", 'g', 1);
 	tCmdLine::tOption OptionHelp("Display help.", "help", 'h');
 
 	// One leg of a (possibly multi-leg) buy/sell trade, kept in input order.
 	struct TradeLeg
 	{
-		int inRow;                    // 1-based row in the input file (for warnings)
+		int inRow;						// 1-based row in the input file (for warnings)
 		tString tradeDate;
 		tString settleDate;
 		tString symbol;
-		tString currency;            // the Price Currency of the leg (part of the (ticker, currency) market key)
+		tString currency;				// the Price Currency of the leg (part of the (ticker, currency) market key)
 		tString quantity;
 		tString price;
-		const char* transactionType;  // "BUY" or "SELL"
-		bool zeroTotal;               // Total Amount cell was empty or 0
-		double totalAbs;              // |Total Amount| (0 when the cell is empty)
-		double gross;                 // |Quantity| * Price
-		tString brokerage;            // computed fee; empty == left blank
-		tString groupKey;             // activity|SYMBOL|tradeDate|settleDate|CURRENCY (upper-cased)
+		const char* transactionType;	// "BUY" or "SELL"
+		bool zeroTotal;					// Total Amount cell was empty or 0
+		double totalAbs;				// |Total Amount| (0 when the cell is empty)
+		double gross;					// |Quantity| * Price
+		tString brokerage;				// computed fee; empty == left blank
+		tString groupKey;				// activity|SYMBOL|tradeDate|settleDate|CURRENCY (upper-cased)
 	};
 
 	// Replaces the file extension of the supplied path with "_sharesight.csv".
 	tString DefaultOutputName(const tString& inputName);
 
-	// The config file remembers the market codes and the ignored tickers across runs. It lives next to
+	// The config file remembers the market codes and the ignored/kept tickers across runs. It lives next to
 	// the executable:
 	//   <exe-dir>/bmoil2sharesight.cfg
-	// Market-code lines are TICKER=MIC or TICKER.CURRENCY=MIC (ISO 10383 MICs); every other non-comment
-	// line is an ignored ticker. Blank lines and lines starting with '#' are ignored.
+	// Market-code lines are TICKER=MIC or TICKER.CURRENCY=MIC (ISO 10383 MICs). A plain ticker line is an
+	// ignored symbol (dropped from the output); the same ticker prefixed with '!' was offered as a possible
+	// Norbert's Gambit and the user chose to keep it (so it is not asked again). Blank lines and lines
+	// starting with '#' are ignored.
 	tString ConfigFile();
 
 	// True if the symbol is on the ignore list (case-insensitive).
 	bool IsIgnored(const tString& symbol, tList<tStringItem>& ignored);
 
-	// Load the market codes and the ignore list from the config file, if the file exists.
-	void LoadConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored);
+	// True if the symbol is on the kept (reviewed) list -- flagged as a Norbert's Gambit and kept -- case-insensitive.
+	bool IsReviewed(const tString& symbol, tList<tStringItem>& reviewed);
 
-	// Add a ticker from the --ignore option; returns true if it was new (so the config file must be saved).
+	// Load the market codes and the ignore/kept lists from the config file, if the file exists.
+	void LoadConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed);
+
+	// Record a ticker in one of the two ticker lists (case-insensitive); returns true if it was not already listed
+	// (i.e. the config file must be saved).
 	bool AddIgnored(tList<tStringItem>& ignored, const tString& ticker);
+	bool AddReviewed(tList<tStringItem>& reviewed, const tString& ticker);
 
-	// Persist the market codes and the ignore list to the config file.
-	bool SaveConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored);
+	// Persist the market codes and the ignore/kept lists to the config file.
+	bool SaveConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed);
 
 	// Convert a MIC to the ShareSight Market Code that is saved in the output CSV. Returns an empty
 	// string when the MIC is not one of the supported codes (see the definition below).
@@ -166,8 +174,47 @@ namespace BMO2SS
 
 	// Ask (numbered menu) which market a (ticker, currency) pair traded on, record the choice in the
 	// market list and save the config file. Returns false to abort the run.
-	bool PromptForMarket(tList<tStringItem>& markets, tList<tStringItem>& ignored,
-						 const tString& symbol, const tString& currency);
+	bool PromptForMarket
+	(
+		tList<tStringItem>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
+		const tString& symbol, const tString& currency
+	);
+
+	// A (ticker, currency) pair present in the input, with a count of the matching buy/sell rows.
+	// Derives from tLink so it can live on a tList (intrusive list; see the tList.h notes).
+	struct PairCount : tLink<PairCount>
+	{
+		tString symbol;
+		tString currency;
+		unsigned long count;
+	};
+
+	// A symbol suspected of Norbert's Gambit: on at least one day its total Buy quantity in one currency equals
+	// its total Sell quantity in a different currency. Currencies are kept in the order first seen in the input.
+	// Derives from tLink so it can live on a tList.
+	struct NorbertSuspect : tLink<NorbertSuspect>
+	{
+		tString symbol;
+		tList<tStringItem> currencies;
+		unsigned long totalRows;   // buy/sell rows for this symbol (across all its currencies/days)
+	};
+
+	// Detect Norbert's Gambit: symbols bought in one currency and sold in another on the same day with matching
+	// share counts, excluding tickers already on the ignore or kept lists. One suspect per symbol (the first
+	// matching day), in first-seen order.
+	void FindNorbertSuspects
+	(
+		const TradeLeg* legs, int numLegs, tList<tStringItem>& ignored,
+		tList<tStringItem>& reviewed, tList<NorbertSuspect>& suspects
+	);
+
+	// Ask the user to ignore or keep each suspected Norbert's Gambit symbol, updating the ignore/kept lists and
+	// saving the config file as the choices come in.
+	void PromptForNorbert
+	(
+		tList<tStringItem>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
+		const tList<NorbertSuspect>& suspects
+	);
 
 	// The legs live in raw (realloc'd) memory; destruct the legs that were constructed in place, then free.
 	void FreeLegs(TradeLeg* legs, int numLegs);
@@ -185,6 +232,7 @@ tString BMO2SS::DefaultOutputName(const tString& inputName)
 	tString base = name.ExtractLeft('.');
 	if (base.IsEmpty())
 		base = name;
+
 	return base + "_sharesight.csv";
 }
 
@@ -205,13 +253,24 @@ bool BMO2SS::IsIgnored(const tString& symbol, tList<tStringItem>& ignored)
 }
 
 
-void BMO2SS::LoadConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored)
+bool BMO2SS::IsReviewed(const tString& symbol, tList<tStringItem>& reviewed)
+{
+	for (tStringItem* item = reviewed.First(); item; item = item->Next())
+	{
+		if (symbol.IsEqualCI(*item))
+			return true;
+	}
+
+	return false;
+}
+
+
+void BMO2SS::LoadConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed)
 {
 	tString text;
 	if (!tSystem::tLoadFile(ConfigFile(), text))
-	{
 		return;
-	}
+
 	tList<tStringItem> lines;
 	tStd::tExplode(lines, text, '\n');
 	for (tStringItem* item = lines.First(); item; item = item->Next())
@@ -221,8 +280,8 @@ void BMO2SS::LoadConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored
 		if (line.IsEmpty() || line[0] == '#')
 			continue;
 
-		// A line carrying '=' is a market-code entry (TICKER=MIC or TICKER.CURRENCY=MIC); anything
-		// else is an ignored ticker.
+		// A line carrying '=' is a market-code entry (TICKER=MIC or TICKER.CURRENCY=MIC). Anything else is a
+		// ticker: a plain one is ignored, one prefixed with '!' was flagged as a Norbert's Gambit and kept.
 		bool hasEquals = false;
 		for (int i = 0; i < line.Length(); ++i)
 		{
@@ -235,7 +294,16 @@ void BMO2SS::LoadConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored
 
 		if (!hasEquals)
 		{
-			ignored.Append(new tStringItem(line));
+			if (line[0] == '!')
+			{
+				// A kept symbol; store it without the marker. A bare '!' stores an empty entry that the
+				// case-insensitive comparisons simply never match.
+				reviewed.Append(new tStringItem(line.Mid(1, (int)line.Length() - 1)));
+			}
+			else
+			{
+				ignored.Append(new tStringItem(line));
+			}
 			continue;
 		}
 
@@ -277,7 +345,19 @@ bool BMO2SS::AddIgnored(tList<tStringItem>& ignored, const tString& ticker)
 }
 
 
-bool BMO2SS::SaveConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored)
+bool BMO2SS::AddReviewed(tList<tStringItem>& reviewed, const tString& ticker)
+{
+	tString clean = ticker;
+	clean.Trim();
+	if (clean.IsEmpty() || IsReviewed(clean, reviewed))
+		return false;
+
+	reviewed.Append(new tStringItem(clean));
+	return true;
+}
+
+
+bool BMO2SS::SaveConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed)
 {
 	tString cfgFile = ConfigFile();
 	if (tSystem::tFileExists(cfgFile) && !tSystem::tDeleteFile(cfgFile))
@@ -293,14 +373,244 @@ bool BMO2SS::SaveConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored
 	}
 	if (ignored.First())
 	{
-		text += "# Ignored tickers (one per line).\n";
+		text += "# Ignored tickers (one per line): dropped from the output entirely.\n";
 		for (tStringItem* item = ignored.First(); item; item = item->Next())
 		{
 			text += *item;
 			text += "\n";
 		}
 	}
+	if (reviewed.First())
+	{
+		text += "# Kept tickers (one per line, '!'-prefixed): flagged as a Norbert's Gambit and kept, so not asked again.\n";
+		for (tStringItem* item = reviewed.First(); item; item = item->Next())
+		{
+			text += char('!');
+			text += *item;
+			text += "\n";
+		}
+	}
 	return tSystem::tCreateFile(cfgFile, text);
+}
+
+
+void BMO2SS::FindNorbertSuspects
+(
+	const TradeLeg* legs, int numLegs, tList<tStringItem>& ignored,
+	tList<tStringItem>& reviewed, tList<NorbertSuspect>& suspects
+)
+{
+	if (numLegs < 2)
+	{
+		return;
+	}
+
+	// First pass: collect the (ticker, currency) pairs present in the input, in the order first seen, and count the
+	// number of buy/sell rows for each. Tickers already on the ignore or kept lists are skipped (their rows are
+	// dropped -- or already accepted -- anyway, so there is nothing to offer).
+	tList<PairCount> pairs;
+	for (int i = 0; i < numLegs; ++i)
+	{
+		tString symbol = legs[i].symbol;
+		symbol.Trim().ToUpper();
+		if (symbol.IsEmpty() || IsIgnored(symbol, ignored) || IsReviewed(symbol, reviewed))
+		{
+			continue;
+		}
+
+		tString currency = legs[i].currency;
+		currency.Trim().ToUpper();
+		if (currency.IsEmpty())
+		{
+			continue;
+		}
+
+		PairCount* found = nullptr;
+		for (PairCount* p = pairs.First(); p; p = p->Next())
+		{
+			if (p->symbol.IsEqualCI(symbol) && p->currency.IsEqualCI(currency))
+			{
+				p->count += 1;
+				found = p;
+				break;
+			}
+		}
+		if (!found)
+		{
+			found = new PairCount();
+			found->symbol = symbol;
+			found->currency = currency;
+			found->count = 1;
+			pairs.Append(found);
+		}
+	}
+
+	// Second pass: a symbol is a candidate when, on some day, the total shares it bought in one currency equal the
+	// total shares it sold in another (or the reverse). Record the first candidate found per symbol.
+	for (PairCount* p = pairs.First(); p; p = p->Next())
+	{
+		// Skip symbols that already produced a suspect.
+		bool listed = false;
+		for (NorbertSuspect* s = suspects.First(); s; s = s->Next())
+		{
+			if (s->symbol.IsEqualCI(p->symbol))
+			{
+				listed = true;
+				break;
+			}
+		}
+		if (listed)
+		{
+			continue;
+		}
+
+		bool match = false;
+		for (PairCount* q = pairs.First(); q && !match; q = q->Next())
+		{
+			// The other currency must be a different one for the same symbol.
+			if (q == p || !q->symbol.IsEqualCI(p->symbol) || q->currency.IsEqualCI(p->currency))
+			{
+				continue;
+			}
+
+			// Compare, day by day, the buy/sell share totals of the two currencies. Whole-share counts are compared
+			// with a small tolerance to absorb any floating-point rounding.
+			for (int i = 0; i < numLegs && !match; ++i)
+			{
+				if (!legs[i].symbol.IsEqualCI(p->symbol))
+				{
+					continue;
+				}
+				const tString date = legs[i].tradeDate;
+
+				double pBuy = 0.0, pSell = 0.0, qBuy = 0.0, qSell = 0.0;
+				for (int j = 0; j < numLegs; ++j)
+				{
+					const TradeLeg& leg = legs[j];
+					if (!leg.symbol.IsEqualCI(p->symbol) || !leg.tradeDate.IsEqualCI(date))
+					{
+						continue;
+					}
+					double qnt = leg.quantity.GetAsDouble();
+					if (qnt < 0.0)
+					{
+						qnt = -qnt;
+					}
+					const bool isP = leg.currency.IsEqualCI(p->currency);
+					const bool isQ = leg.currency.IsEqualCI(q->currency);
+					if (isP && leg.transactionType[0] == 'B')
+						pBuy += qnt;
+					else if (isP)
+						pSell += qnt;
+					else if (isQ && leg.transactionType[0] == 'B')
+						qBuy += qnt;
+					else if (isQ)
+						qSell += qnt;
+				}
+
+				const double tol = 1e-6;
+				const bool buyVsSell = (pBuy > 0.0) && ((pBuy - qSell) > -tol) && ((pBuy - qSell) < tol);
+				const bool sellVsBuy = (pSell > 0.0) && ((pSell - qBuy) > -tol) && ((pSell - qBuy) < tol);
+				match = buyVsSell || sellVsBuy;
+			}
+		}
+
+		if (!match)
+		{
+			continue;
+		}
+
+		// Record the suspect: the symbol, every currency it traded in, and its total number of buy/sell rows.
+		NorbertSuspect* sus = new NorbertSuspect();
+		sus->symbol = p->symbol;
+		unsigned long total = 0;
+		for (PairCount* pc = pairs.First(); pc; pc = pc->Next())
+		{
+			if (pc->symbol.IsEqualCI(p->symbol))
+			{
+				total += pc->count;
+				sus->currencies.Append(new tStringItem(pc->currency));
+			}
+		}
+		sus->totalRows = total;
+		suspects.Append(sus);
+	}
+}
+
+
+void BMO2SS::PromptForNorbert
+(
+	tList<tStringItem>& markets, tList<tStringItem>& ignored,
+	tList<tStringItem>& reviewed, const tList<NorbertSuspect>& suspects
+)
+{
+	for (const NorbertSuspect* s = suspects.First(); s; s = s->Next())
+	{
+		// Build the currency list for the message (eg. "CAD, USD").
+		tString curList;
+		for (tStringItem* c = s->currencies.First(); c; c = c->Next())
+		{
+			if (curList.IsValid())
+			{
+				curList += ", ";
+			}
+			curList += *c;
+		}
+
+		if (!CanPromptForMarket())
+		{
+			tPrintf
+			(
+				"\nPossible Norbert's Gambit detected for %s (%s, %u row(s)); it is not ignored and is converted\n"
+				"as-is. Re-run in an interactive shell to decide.\n",
+				s->symbol.Chr(), curList.Chr(), s->totalRows
+			);
+			continue;
+		}
+
+		tPrintf
+		(
+			"\nPossible Norbert's Gambit: %s was bought in one currency and sold in another (%s) on the same day\n"
+			"with matching share counts (%u row(s)). Such legs are usually the two halves of the gambit, which are\n"
+			"not real trades for ShareSight.\n",
+			s->symbol.Chr(), curList.Chr(), s->totalRows
+		);
+
+		char buf[32];
+		tString choice;
+		while (1)
+		{
+			tPrintf("Ignore %s? [y/N]: ", s->symbol.Chr());
+			fflush(stdout);
+			if (!fgets(buf, (int)sizeof(buf), stdin))
+			{
+				AddReviewed(reviewed, s->symbol);
+				tPrintf("No input; keeping %s in the output (not asked again).\n", s->symbol.Chr());
+				break;
+			}
+
+			choice = buf;
+			choice.Trim();
+			if (choice.IsEqualCI("y") || choice.IsEqualCI("yes"))
+			{
+				AddIgnored(ignored, s->symbol);
+				tPrintf("Ignoring %s from the output.\n", s->symbol.Chr());
+				break;
+			}
+			if (choice.IsEmpty() || choice.IsEqualCI("n") || choice.IsEqualCI("no"))
+			{
+				AddReviewed(reviewed, s->symbol);
+				tPrintf("Keeping %s in the output (not asked again).\n", s->symbol.Chr());
+				break;
+			}
+			tPrintf("Please answer 'y' to ignore or 'n' to keep.\n");
+		}
+
+		if (!SaveConfig(markets, ignored, reviewed))
+		{
+			tPrintf("Warning: failed to save the config file; the choice for %s will be asked again.\n", s->symbol.Chr());
+		}
+	}
 }
 
 
@@ -393,7 +703,7 @@ bool BMO2SS::CanPromptForMarket()
 
 bool BMO2SS::PromptForMarket
 (
-	tList<tStringItem>& markets, tList<tStringItem>& ignored,
+	tList<tStringItem>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
 	const tString& symbol, const tString& currency
 )
 {
@@ -466,7 +776,7 @@ bool BMO2SS::PromptForMarket
 		entry += tString(menu[index - 1].mic);
 		markets.Append(new tStringItem(entry));
 
-		if (SaveConfig(markets, ignored))
+		if (SaveConfig(markets, ignored, reviewed))
 			tPrintf
 			(
 				"Saved %s=%s (ShareSight Market Code: %s) to %s.\n",
@@ -512,11 +822,11 @@ void BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs)
 	for (int i = 0; i < numLegs; ++i)
 	{
 		// Gather the group's numbers.
-		int firstZero   = -1;
-		int lastLeg     = -1;
-		int lastNonZero = -1;
-		double sumTotal = 0.0;
-		double sumGross = 0.0;
+		int firstZero	= -1;
+		int lastLeg		= -1;
+		int lastNonZero	= -1;
+		double sumTotal	= 0.0;
+		double sumGross	= 0.0;
 		for (int j = 0; j < numLegs; ++j)
 		{
 			if (legs[j].groupKey != legs[i].groupKey)
@@ -590,30 +900,13 @@ int main(int argc, char** argv)
 	tString outputFile = BMO2SS::ParamOutput ? BMO2SS::ParamOutput.Get()
 														: BMO2SS::DefaultOutputName(inputFile);
 
-	// Config: market codes (TICKER=CURRENCY=MIC pairs) and ignored tickers, remembered in a file next to the
-	// executable. --ignore adds tickers; market codes are added when the user answers the prompt for a pair that is
-	// not recorded yet.
+	// Config: market codes (TICKER=CURRENCY=MIC pairs), ignored tickers, and kept (reviewed) tickers, remembered
+	// in a file next to the executable. Market codes are added when the user answers the prompt for a pair that is
+	// not recorded yet; ignored/kept tickers are recorded when the user answers the Norbert's Gambit prompt.
 	tList<tStringItem> marketMap;
 	tList<tStringItem> ignoreList;
-	BMO2SS::LoadConfig(marketMap, ignoreList);
-
-	bool ignoreDirty = false;
-	if (BMO2SS::OptionIgnore)
-	{
-		tCmdLine::tOption& opt = BMO2SS::OptionIgnore;
-		for (int a = 0; a < opt.GetNumTotalArgs(); ++a)
-		{
-			if (BMO2SS::AddIgnored(ignoreList, opt.ArgN(a + 1)))
-				ignoreDirty = true;
-		}
-	}
-
-	if (ignoreDirty && !BMO2SS::SaveConfig(marketMap, ignoreList))
-		tPrintf
-		(
-			"Warning: could not save the config to %s (the tickers are ignored for this run only).\n",
-			BMO2SS::ConfigFile().Chr()
-		);
+	tList<tStringItem> reviewedList;
+	BMO2SS::LoadConfig(marketMap, ignoreList, reviewedList);
 
 	// Load the Investorline export.
 	tSystem::tCSV input;
@@ -695,19 +988,19 @@ int main(int argc, char** argv)
 		if (tradeDate[0] == '-')
 			continue;
 
-		tString settleDate = input.Get(row, 1);
+		tString settleDate	= input.Get(row, 1);
 		settleDate.Trim();
-		tString activity = input.Get(row, 2);
+		tString activity	= input.Get(row, 2);
 		activity.Trim();
-		tString symbol   = input.Get(row, 4);
+		tString symbol		= input.Get(row, 4);
 		symbol.Trim();
-		tString quantity = input.Get(row, 5);
+		tString quantity	= input.Get(row, 5);
 		quantity.Trim();
-		tString price    = input.Get(row, 6);
+		tString price		= input.Get(row, 6);
 		price.Trim();
-		tString currency = input.Get(row, 7);
+		tString currency	= input.Get(row, 7);
 		currency.Trim();
-		tString total    = input.Get(row, 8);
+		tString total		= input.Get(row, 8);
 		total.Trim();
 
 		// Only Buy and Sell map to the bulk-trades transaction types ShareSight accepts.
@@ -814,11 +1107,22 @@ int main(int argc, char** argv)
 		converted++;
 	}
 
+	// ---- Norbert's Gambit: detect symbols bought in one currency and sold in another on the same day with
+	// matching share counts, and ask whether to drop them. A "keep" is recorded so the same ticker is not asked
+	// again. This runs before the market-code prompts so a dropped symbol is not asked about.
+	{
+		tList<BMO2SS::NorbertSuspect> suspects;
+		BMO2SS::FindNorbertSuspects(legs, numLegs, ignoreList, reviewedList, suspects);
+		BMO2SS::PromptForNorbert(marketMap, ignoreList, reviewedList, suspects);
+	}
+
 	// ---- Market codes: one per (ticker, currency) pair, recorded in the config file. Ask once per
 	// pair that is not recorded yet; each answer is saved to the config file for future runs.
 	for (int i = 0; i < numLegs; i++)
 	{
 		const BMO2SS::TradeLeg& leg = legs[i];
+		if (BMO2SS::IsIgnored(leg.symbol, ignoreList))
+			continue;
 		if (!BMO2SS::MarketCodeFor(marketMap, leg.symbol, leg.currency).IsEmpty())
 			continue;
 
@@ -835,7 +1139,7 @@ int main(int argc, char** argv)
 			return 1;
 		}
 
-		if (!BMO2SS::PromptForMarket(marketMap, ignoreList, leg.symbol, leg.currency))
+		if (!BMO2SS::PromptForMarket(marketMap, ignoreList, reviewedList, leg.symbol, leg.currency))
 		{
 			tPrintf("Error: aborted -- the output would carry %s rows without a Market Code.\n", pair.Chr());
 			return 1;
@@ -846,10 +1150,20 @@ int main(int argc, char** argv)
 	BMO2SS::ComputeBrokerages(legs, numLegs);
 
 	int outRow = 1;
+	int written = 0;
+	int droppedNorbert = 0;
 
 	for (int i = 0; i < numLegs; i++)
 	{
 		const BMO2SS::TradeLeg& leg = legs[i];
+
+		// A ticker the user just chose to ignore (a detected Norbert's Gambit) was collected before the prompt;
+		// drop it from the output now.
+		if (BMO2SS::IsIgnored(leg.symbol, ignoreList))
+		{
+			droppedNorbert++;
+			continue;
+		}
 
 		tList<tStringItem> outRowCells;
 		outRowCells.Append(new tStringItem(leg.tradeDate));
@@ -878,11 +1192,12 @@ int main(int argc, char** argv)
 		}
 
 		outRow++;
+		written++;
 	}
 
 	BMO2SS::FreeLegs(legs, numLegs);
 
-	if (converted == 0)
+	if (written == 0)
 	{
 		tPrintf("Warning: No Buy or Sell rows were found; the output file will contain only the header.\n");
 	}
@@ -903,8 +1218,15 @@ int main(int argc, char** argv)
 	tPrintf
 	(
 		"Converted %d Buy/Sell row(s) from '%s' to '%s'. %d row(s) skipped.\n",
-		converted, inputFile.Chr(), outputFile.Chr(), skipped
+		written, inputFile.Chr(), outputFile.Chr(), skipped
 	);
+
+	if (droppedNorbert > 0)
+		tPrintf
+		(
+			"Ignored %d row(s) for the detected Norbert's Gambit ticker(s) (%s).\n",
+			droppedNorbert, BMO2SS::ConfigFile().Chr()
+		);
 
 	if (ignoredRows > 0)
 		tPrintf
