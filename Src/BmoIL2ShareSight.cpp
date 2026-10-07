@@ -707,19 +707,22 @@ bool BMO2SS::PromptForMarket
 	const tString& symbol, const tString& currency
 )
 {
-	// The supported MICs in a stable order; the menu numbers follow this list.
+	// The supported MICs in a stable order; the menu numbers follow this list. desc is the long
+	// market name shown in the menu so the user can tell the entries apart (eg. XNYS vs ARCX) --
+	// kept in sync with the table in Data/Readme.txt.
 	static const struct
 	{
 		const char* mic;
 		const char* code;
+		const char* desc;
 	} menu[] =
 	{
-		{ "XTSE", "TSX" },
-		{ "XTSX", "TSXV" },
-		{ "NEOE", "NEO" },
-		{ "XNAS", "NASDAQ" },
-		{ "XNYS", "NYSE" },
-		{ "ARCX", "NYSE" },
+		{ "XTSE", "TSX",	"Toronto Stock Exchange" },
+		{ "XTSX", "TSXV",	"Toronto Venture Stock Exchange" },
+		{ "NEOE", "NEO",	"CBOE-Canada/NEO Exchange" },
+		{ "XNAS", "NASDAQ",	"The NASDAQ Exchange" },
+		{ "XNYS", "NYSE",	"New York Stock Exchange" },
+		{ "ARCX", "NYSE",	"New York Stock Exchange Arca" },
 	};
 
 	static const int menuCount = (int)(sizeof(menu) / sizeof(menu[0]));
@@ -738,7 +741,7 @@ bool BMO2SS::PromptForMarket
 	{
 		tPrintf("\nWhich market did %s trade on?\n", key.Chr());
 		for (int i = 0; i < menuCount; ++i)
-			tPrintf("  %d. %s  (ShareSight: %s)\n", i + 1, menu[i].mic, menu[i].code);
+			tPrintf("  %d. %s  (ShareSight: %-6s) -- %s\n", i + 1, menu[i].mic, menu[i].code, menu[i].desc);
 
 		tPrintf("Enter 1-%d, or q to cancel: ", menuCount);
 		fflush(stdout);
