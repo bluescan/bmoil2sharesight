@@ -134,3 +134,10 @@ install(
 	TARGETS ${PROJECT_NAME}
 	RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}/Bmoil2ShareSightInstall"
 )
+
+# Also drop the built exe into an in-repo Install/ folder for day-to-day conversions.
+# install() creates Install/ if it is missing; the folder itself is git-ignored (see .gitignore).
+install(
+	FILES "$<TARGET_FILE:${PROJECT_NAME}>"
+	DESTINATION "${CMAKE_SOURCE_DIR}/Install"
+)

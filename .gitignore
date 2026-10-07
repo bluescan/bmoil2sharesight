@@ -4,6 +4,7 @@ build*/
 
 # Ignore specific directories.
 /Images/
+/Install/
 
 # Filetypes in directories.
 
