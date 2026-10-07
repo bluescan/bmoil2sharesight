@@ -16,11 +16,11 @@
 //
 // Market codes: the input has no Market Code column, and different tickers -- or the same ticker traded in different
 // currencies -- can live on different exchanges, so the code is recorded per (ticker, currency) pair in the
-// bmoil2sharesight.cfg config file (next to the executable): one "TICKER=MIC" or "TICKER.CURRENCY=MIC" line per pair.
-// The MIC is a standard ISO 10383 market identifier code (XNYS, ARCX, XNAS, XTSE, XTSX, NEOE); the matching ShareSight
-// Market Code (NYSE, NASDAQ, TSX, TSXV, NEO) is what gets saved in the output CSV. When a pair is not recorded, the
-// tool lists the supported MICs and asks the user to pick one by number, then saves the choice to the config file so it
-// is not asked again.
+// bmoil2sharesight.cfg config file (next to the executable). The config file uses the tScript s-expr notation: a
+// "Markets" list of [TICKER:CURR MIC] entries. The MIC is a standard ISO 10383 market identifier
+// code (XNYS, ARCX, XNAS, XTSE, XTSX, NEOE); the matching ShareSight Market Code (NYSE, NASDAQ, TSX, TSXV, NEO) is what
+// gets saved in the output CSV. When a pair is not recorded, the tool lists the supported MICs and asks the user to pick
+// one by number, then saves the choice to the config file so it is not asked again.
 //
 // Brokerage fees: a single order may be split across several legs (rows) that share activity, symbol, transaction date,
 // settlement date and price currency -- limit-order fills can settle at slightly different prices, and one or more legs
@@ -33,11 +33,11 @@
 // uses to finalize the order, the one carrying the order's total -- falling back to the first zero-total leg, then to
 // the last leg, and is left blank when it is zero. A standalone leg is just a single-leg group.
 //
-// Ignored tickers (eg. Norbert's Gambit vehicles): a symbol dropped from the output is recorded as a plain line in the
-// bmoil2sharesight.cfg config file (next to the executable, alongside the market codes) so it is remembered for future
-// runs. Norbert's Gambit is detected automatically -- the same ticker bought in one currency and sold in another on the
-// same day with matching share counts (eg. buy a CUS/DR in CAD on the TSX and sell it in USD on a US venue) -- and the
-// tool asks whether to ignore it. A "keep" answer is recorded with a leading '!' so the same ticker is not asked again.
+// Ignored tickers (eg. Norbert's Gambit vehicles): a symbol dropped from the output is recorded in an "Ignored" list in
+// the bmoil2sharesight.cfg config file (next to the executable, alongside the market codes) so it is remembered for
+// future runs. Norbert's Gambit is detected automatically -- the same ticker bought in one currency and sold in another
+// on the same day with matching share counts (eg. buy a CUS/DR in CAD on the TSX and sell it in USD on a US venue) --
+// and the tool asks whether to ignore it. A "keep" answer is recorded in a "Reviewed" list so it is not asked again.
 //
 // Copyright (c) 2026 Tristan Grimmer.
 // Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby
@@ -65,6 +65,7 @@
 #include <System/tCmdLine.h>
 #include <System/tFile.h>
 #include <System/tPrint.h>
+#include <System/tScript.h>
 
 
 namespace Bmoil2ShareSightVersion
@@ -128,16 +129,25 @@ namespace BMO2SS
 		tString groupKey;				// activity|SYMBOL|tradeDate|settleDate|CURRENCY (upper-cased)
 	};
 
+	// One market-code mapping: a ticker -- optionally narrowed to a currency -- to an ISO 10383 MIC. Lives on a tList
+	// (an intrusive list, so it derives from tLink; see the PairCount notes above).
+	struct MarketEntry : tLink<MarketEntry>
+	{
+		tString ticker;		// upper-case, eg. "MSFT"
+		tString currency;		// upper-case ISO 4217 currency (eg. "USD"), or empty for any currency
+		tString mic;			// upper-case ISO 10383 MIC, eg. "XNYS"
+	};
+
 	// Replaces the file extension of the supplied path with "_sharesight.csv".
 	tString DefaultOutputName(const tString& inputName);
 
 	// The config file remembers the market codes and the ignored/kept tickers across runs. It lives next to
 	// the executable:
 	//   <exe-dir>/bmoil2sharesight.cfg
-	// Market-code lines are TICKER=MIC or TICKER.CURRENCY=MIC (ISO 10383 MICs). A plain ticker line is an
-	// ignored symbol (dropped from the output); the same ticker prefixed with '!' was offered as a possible
-	// Norbert's Gambit and the user chose to keep it (so it is not asked again). Blank lines and lines
-	// starting with '#' are ignored.
+	// In s-expr format: "Markets" entries are [TICKER:CURR MIC] (MIC is an ISO 10383 code);
+	// "Ignored" entries are tickers dropped from the output; "Reviewed" entries are tickers
+	// flagged as a possible Norbert's Gambit and kept (so the tool does not ask again).
+	// Legacy KEY=VALUE format (TICKER.CURRENCY=MIC) is also read for backward compatibility.
 	tString ConfigFile();
 
 	// True if the symbol is on the ignore list (case-insensitive).
@@ -146,16 +156,27 @@ namespace BMO2SS
 	// True if the symbol is on the kept (reviewed) list -- flagged as a Norbert's Gambit and kept -- case-insensitive.
 	bool IsReviewed(const tString& symbol, tList<tStringItem>& reviewed);
 
-	// Load the market codes and the ignore/kept lists from the config file, if the file exists.
-	void LoadConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed);
+	// True when the config file is in the tScript s-expr format (any line whose first non-blank char is '['); otherwise
+	// it is the legacy "TICKER[.CURRENCY]=MIC" / plain-ticker format.
+	bool IsExprConfig(const tString& text);
+
+	// Parse the s-expr config file into the market entries and the ignore/reviewed lists.
+	void LoadConfigExpr(const tString& text, tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed);
+
+	// Parse the legacy config file (the format used before the s-expr one) into the same lists.
+	void LoadConfigLegacy(const tString& text, tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed);
+
+	// Load the market codes and the ignore/kept lists from the config file, if the file exists. Tries the s-expr format
+	// first and falls back to the legacy format for files written before the switch.
+	void LoadConfig(tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed);
 
 	// Record a ticker in one of the two ticker lists (case-insensitive); returns true if it was not already listed
 	// (i.e. the config file must be saved).
 	bool AddIgnored(tList<tStringItem>& ignored, const tString& ticker);
 	bool AddReviewed(tList<tStringItem>& reviewed, const tString& ticker);
 
-	// Persist the market codes and the ignore/kept lists to the config file.
-	bool SaveConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed);
+	// Persist the market codes and the ignore/kept lists to the config file in the tScript s-expr format.
+	bool SaveConfig(tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed);
 
 	// Convert a MIC to the ShareSight Market Code that is saved in the output CSV. Returns an empty
 	// string when the MIC is not one of the supported codes (see the definition below).
@@ -163,10 +184,7 @@ namespace BMO2SS
 
 	// The ShareSight Market Code recorded for a (ticker, currency) pair; falls back from
 	// TICKER.CURRENCY to TICKER. Empty when the pair is not recorded.
-	tString MarketCodeFor(tList<tStringItem>& markets, const tString& symbol, const tString& currency);
-
-	// Look up the (upper-cased) key in the market-code list; on success fills in its MIC.
-	bool FindMarket(tList<tStringItem>& markets, const tString& key, tString& micOut);
+	tString MarketCodeFor(tList<MarketEntry>& markets, const tString& symbol, const tString& currency);
 
 	// True when a market code can be asked for: stdin is an interactive terminal, or piped input that
 	// already has data (an empty pipe cannot answer, so the prompt would only block).
@@ -176,7 +194,7 @@ namespace BMO2SS
 	// market list and save the config file. Returns false to abort the run.
 	bool PromptForMarket
 	(
-		tList<tStringItem>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
+		tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
 		const tString& symbol, const tString& currency
 	);
 
@@ -212,7 +230,7 @@ namespace BMO2SS
 	// saving the config file as the choices come in.
 	void PromptForNorbert
 	(
-		tList<tStringItem>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
+		tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
 		const tList<NorbertSuspect>& suspects
 	);
 
@@ -265,12 +283,127 @@ bool BMO2SS::IsReviewed(const tString& symbol, tList<tStringItem>& reviewed)
 }
 
 
-void BMO2SS::LoadConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed)
+bool BMO2SS::IsExprConfig(const tString& text)
 {
-	tString text;
-	if (!tSystem::tLoadFile(ConfigFile(), text))
-		return;
+	tList<tStringItem> lines;
+	tStd::tExplode(lines, text, '\n');
+	for (tStringItem* item = lines.First(); item; item = item->Next())
+	{
+		tString line = *item;
+		line.Trim();
+		if (line.Length() > 0 && line[0] == '[')
+			return true;
+	}
 
+	return false;
+}
+
+
+void BMO2SS::LoadConfigExpr
+(
+	const tString& text, tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed
+)
+{
+	// A malformed config should not abort the run; tScript signals parse errors by throwing, so swallow them and
+	// leave the lists as-is.
+	try
+	{
+		tExprReader reader(text, false);
+
+		// The file is a sequence of top-level blocks, each headed by a command word: Markets, Ignored or Reviewed.
+		for (tExpression block = reader.First(); block.Valid(); block = block.Next())
+		{
+			tString cmd = block.Command().GetAtomString();
+
+			if (cmd.IsEqualCI("Markets"))
+			{
+				// Each entry is [ TICKER:CURR MIC ] (new) or [ TICKER MIC ] / [ TICKER CURRENCY MIC ] (legacy).
+				for (tExpression e = block.Item1(); e.Valid(); e = e.Next())
+				{
+					int n = e.CountItems();
+					if (n < 2)
+						continue;
+
+					tString first = e.Item0().GetAtomString();
+					tString mic	= e.ItemN(n - 1).GetAtomString();
+
+					tString ticker;
+					tString cur;
+					int colon = -1;
+					for (int i = 0; i < first.Length(); ++i)
+					{
+						if (first[i] == ':')
+						{
+							colon = i;
+							break;
+						}
+					}
+					if (colon > 0)
+					{
+						ticker = first.Left(colon);
+						cur = first.Mid(colon + 1, first.Length() - colon - 1);
+					}
+					else if (n >= 3)
+					{
+						ticker = first;
+						cur = e.Item1().GetAtomString();
+					}
+					else
+					{
+						ticker = first;
+					}
+
+					ticker.Trim().ToUpper();
+					cur.Trim().ToUpper();
+					mic.Trim().ToUpper();
+					if (ticker.IsEmpty() || mic.IsEmpty() || MarketCodeFromMIC(mic).IsEmpty())
+					{
+						tPrintf("Warning: ignoring an invalid or unsupported\n");
+						tPrintf("market entry in the config file.\n");
+						continue;
+					}
+
+					MarketEntry* entry = new MarketEntry();
+					entry->ticker = ticker;
+					entry->currency = cur;
+					entry->mic = mic;
+					markets.Append(entry);
+				}
+			}
+			else if (cmd.IsEqualCI("Ignored"))
+			{
+				for (tExpression e = block.Item1(); e.Valid(); e = e.Next())
+				{
+					tString t = e.GetAtomString();
+					t.Trim();
+					if (!t.IsEmpty())
+						ignored.Append(new tStringItem(t));
+				}
+			}
+			else if (cmd.IsEqualCI("Reviewed"))
+			{
+				for (tExpression e = block.Item1(); e.Valid(); e = e.Next())
+				{
+					tString t = e.GetAtomString();
+					t.Trim();
+					if (!t.IsEmpty())
+						reviewed.Append(new tStringItem(t));
+				}
+			}
+		}
+	}
+	catch (...)
+	{
+		// Leave the lists as-is; a later successful save will rewrite a valid file.
+	}
+}
+
+
+void BMO2SS::LoadConfigLegacy
+(
+	const tString& text, tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed
+)
+{
 	tList<tStringItem> lines;
 	tStd::tExplode(lines, text, '\n');
 	for (tStringItem* item = lines.First(); item; item = item->Next())
@@ -296,8 +429,6 @@ void BMO2SS::LoadConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored
 		{
 			if (line[0] == '!')
 			{
-				// A kept symbol; store it without the marker. A bare '!' stores an empty entry that the
-				// case-insensitive comparisons simply never match.
 				reviewed.Append(new tStringItem(line.Mid(1, (int)line.Length() - 1)));
 			}
 			else
@@ -307,8 +438,7 @@ void BMO2SS::LoadConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored
 			continue;
 		}
 
-		// Split "TICKER(.CURRENCY)=MIC". ExtractLeft('=') returns the left part (and leaves the right part in the
-		// string); Right('=') is non-destructive. Use the returned left part as the key.
+		// Split "TICKER(.CURRENCY)=MIC". ExtractLeft('=') returns the left part; Right('=') is non-destructive.
 		tString keySrc = line;
 		tString micSrc = line;
 		tString key = keySrc.ExtractLeft('=');
@@ -317,19 +447,42 @@ void BMO2SS::LoadConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored
 		mic.Trim().ToUpper();
 		if (key.IsEmpty() || mic.IsEmpty() || MarketCodeFromMIC(mic).IsEmpty())
 		{
-			tPrintf
-			(
-				"Warning: ignoring the malformed or unsupported market entry '%s' in %s.\n",
-				line.Chr(), ConfigFile().Chr()
-			);
+			tPrintf("Warning: ignoring an invalid or unsupported market entry in the config file.\n");
 			continue;
 		}
 
-		tString entry = key;
-		entry += char('=');
-		entry += mic;
-		markets.Append(new tStringItem(entry));
+		MarketEntry* entry = new MarketEntry();
+		entry->ticker = key;
+		entry->mic = mic;
+		int dot = -1;
+		for (int i = 0; i < key.Length(); ++i)
+		{
+			if (key[i] == '.')
+			{
+				dot = i;
+				break;
+			}
+		}
+		if (dot > 0)
+		{
+			entry->ticker = key.Left(dot);
+			entry->currency = key.Mid(dot + 1, key.Length() - dot - 1);
+		}
+		markets.Append(entry);
 	}
+}
+
+
+void BMO2SS::LoadConfig(tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed)
+{
+	tString text;
+	if (!tSystem::tLoadFile(ConfigFile(), text))
+		return;
+
+	if (IsExprConfig(text))
+		LoadConfigExpr(text, markets, ignored, reviewed);
+	else
+		LoadConfigLegacy(text, markets, ignored, reviewed);
 }
 
 
@@ -357,40 +510,67 @@ bool BMO2SS::AddReviewed(tList<tStringItem>& reviewed, const tString& ticker)
 }
 
 
-bool BMO2SS::SaveConfig(tList<tStringItem>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed)
+bool BMO2SS::SaveConfig(tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed)
 {
-	tString cfgFile = ConfigFile();
-	if (tSystem::tFileExists(cfgFile) && !tSystem::tDeleteFile(cfgFile))
-		return false;
+	// The writer creates (or overwrites) the file. It is written in the tScript s-expr notation.
+	tExprWriter writer(ConfigFile());
 
-	tString text = "# BmoIL2ShareSight configuration.\n";
-	text += "# Market codes: TICKER=MIC or TICKER.CURRENCY=MIC -- the MIC (eg. XNYS) is converted to the\n";
-	text += "# ShareSight Market Code (eg. NYSE) that is saved in the output CSV.\n";
-	for (tStringItem* item = markets.First(); item; item = item->Next())
+	writer.Rem("BmoIL2ShareSight configuration (tScript s-expr format).");
+	writer.Rem("Markets: [TICKER:CURR MIC]; the MIC is an ISO 10383 code");
+	writer.Rem("converted to the ShareSight Market Code in the output CSV.");
+
+	writer.Rem("Markets");
+	writer.Begin();
+	writer.Atom("Markets");
+	writer.Indent();
+	writer.CR();
+	for (MarketEntry* m = markets.First(); m; m = m->Next())
 	{
-		text += *item;
-		text += "\n";
+		tString key = m->ticker;
+		if (!m->currency.IsEmpty())
+		{
+			key += ':';
+			key += m->currency;
+		}
+		writer.Comp(key, m->mic);
 	}
+	writer.Dedent();
+	writer.CR();
+	writer.End();
+
 	if (ignored.First())
 	{
-		text += "# Ignored tickers (one per line): dropped from the output entirely.\n";
+		writer.CR();
+		writer.CR();
+		writer.Rem("Ignored");
+		writer.Rem("Tickers dropped from the output (eg. a Norbert's Gambit vehicle).");
+		writer.Begin();
+		writer.Atom("Ignored");
+		writer.Indent();
+		writer.CR();
 		for (tStringItem* item = ignored.First(); item; item = item->Next())
-		{
-			text += *item;
-			text += "\n";
-		}
+			writer.Atom(*item);
+		writer.Dedent();
+		writer.CR();
+		writer.End();
 	}
+
 	if (reviewed.First())
 	{
-		text += "# Kept tickers (one per line, '!'-prefixed): flagged as a Norbert's Gambit and kept, so not asked again.\n";
+		writer.Rem("Reviewed");
+		writer.Rem("Flagged as a possible Norbert's Gambit and kept, so not asked again.");
+		writer.Begin();
+		writer.Atom("Reviewed");
+		writer.Indent();
+		writer.CR();
 		for (tStringItem* item = reviewed.First(); item; item = item->Next())
-		{
-			text += char('!');
-			text += *item;
-			text += "\n";
-		}
+			writer.Atom(*item);
+		writer.Dedent();
+		writer.CR();
+		writer.End();
 	}
-	return tSystem::tCreateFile(cfgFile, text);
+
+	return true;
 }
 
 
@@ -540,7 +720,7 @@ void BMO2SS::FindNorbertSuspects
 
 void BMO2SS::PromptForNorbert
 (
-	tList<tStringItem>& markets, tList<tStringItem>& ignored,
+	tList<MarketEntry>& markets, tList<tStringItem>& ignored,
 	tList<tStringItem>& reviewed, const tList<NorbertSuspect>& suspects
 )
 {
@@ -561,8 +741,9 @@ void BMO2SS::PromptForNorbert
 		{
 			tPrintf
 			(
-				"\nPossible Norbert's Gambit detected for %s (%s, %u row(s)); it is not ignored and is converted\n"
-				"as-is. Re-run in an interactive shell to decide.\n",
+				"\nPossible Norbert's Gambit detected for %s (%s, %u row(s)).\n"
+				"It is not ignored and is converted as-is.\n"
+				"Re-run in an interactive shell to decide.\n",
 				s->symbol.Chr(), curList.Chr(), s->totalRows
 			);
 			continue;
@@ -570,9 +751,10 @@ void BMO2SS::PromptForNorbert
 
 		tPrintf
 		(
-			"\nPossible Norbert's Gambit: %s was bought in one currency and sold in another (%s) on the same day\n"
-			"with matching share counts (%u row(s)). Such legs are usually the two halves of the gambit, which are\n"
-			"not real trades for ShareSight.\n",
+			"\nPossible Norbert's Gambit: %s was bought in one currency and sold in\n"
+			"another (%s) on the same day with matching share counts (%u row(s)).\n"
+			"Such legs are usually the two halves of the gambit, which are not real\n"
+			"trades for ShareSight.\n",
 			s->symbol.Chr(), curList.Chr(), s->totalRows
 		);
 
@@ -608,7 +790,8 @@ void BMO2SS::PromptForNorbert
 
 		if (!SaveConfig(markets, ignored, reviewed))
 		{
-			tPrintf("Warning: failed to save the config file; the choice for %s will be asked again.\n", s->symbol.Chr());
+			tPrintf("Warning: could not save the config file; choice for %s\n", s->symbol.Chr());
+			tPrintf("will be asked again.\n");
 		}
 	}
 }
@@ -635,47 +818,28 @@ tString BMO2SS::MarketCodeFromMIC(const tString& mic)
 }
 
 
-bool BMO2SS::FindMarket(tList<tStringItem>& markets, const tString& key, tString& micOut)
-{
-	for (tStringItem* item = markets.First(); item; item = item->Next())
-	{
-		tString entryKey(*item);
-		tString entry = entryKey.ExtractLeft('=');	// ExtractLeft returns the key (left of '=').
-		entry.Trim().ToUpper();
-		if (entry.IsEqualCI(key))
-		{
-			micOut = item->Right('=');
-			return true;
-		}
-	}
-	return false;
-}
-
-
-tString BMO2SS::MarketCodeFor(tList<tStringItem>& markets, const tString& symbol, const tString& currency)
+tString BMO2SS::MarketCodeFor(tList<MarketEntry>& markets, const tString& symbol, const tString& currency)
 {
 	tString key = symbol;
 	key.Trim().ToUpper();
 	if (key.IsEmpty())
 		return tString();
 
-	// Prefer the (ticker, currency) pair; fall back to the ticker alone.
+	tString cur;
 	if (!currency.IsEmpty())
 	{
-		tString full = key;
-		full += char('.');
-		tString cur = currency;
+		cur = currency;
 		cur.Trim().ToUpper();
-		full += cur;
-
-		tString mic;
-		if (FindMarket(markets, full, mic))
-			return MarketCodeFromMIC(mic);
 	}
 
-	tString mic;
-	if (FindMarket(markets, key, mic))
-		return MarketCodeFromMIC(mic);
+	// Prefer the exact (ticker, currency) pair; fall back to the ticker alone.
+	for (MarketEntry* m = markets.First(); m; m = m->Next())
+	{
+		if (!m->ticker.IsEqualCI(key))
+			continue;
+		if (cur.IsEmpty() || m->currency.IsEmpty() || m->currency.IsEqualCI(cur))
+			return MarketCodeFromMIC(m->mic);
+	}
 
 	return tString();
 }
@@ -703,7 +867,7 @@ bool BMO2SS::CanPromptForMarket()
 
 bool BMO2SS::PromptForMarket
 (
-	tList<tStringItem>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
+	tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
 	const tString& symbol, const tString& currency
 )
 {
@@ -731,7 +895,7 @@ bool BMO2SS::PromptForMarket
 	key.Trim().ToUpper();
 	if (!currency.IsEmpty())
 	{
-		key += char('.');
+		key += ':';
 		tString cur = currency;
 		cur.Trim().ToUpper();
 		key += cur;
@@ -774,23 +938,25 @@ bool BMO2SS::PromptForMarket
 			continue;
 		}
 
-		tString entry = key;
-		entry += char('=');
-		entry += tString(menu[index - 1].mic);
-		markets.Append(new tStringItem(entry));
+		MarketEntry* entry = new MarketEntry();
+		entry->ticker = symbol;
+		entry->ticker.Trim().ToUpper();
+		entry->currency = currency;
+		entry->currency.Trim().ToUpper();
+		entry->mic = menu[index - 1].mic;
+		markets.Append(entry);
 
 		if (SaveConfig(markets, ignored, reviewed))
-			tPrintf
-			(
-				"Saved %s=%s (ShareSight Market Code: %s) to %s.\n",
-				key.Chr(), menu[index - 1].mic, menu[index - 1].code, ConfigFile().Chr()
-			);
+		{
+			tPrintf("Saved %s %s (ShareSight Market Code: %s).\n", key.Chr(), menu[index - 1].mic, menu[index - 1].code);
+			tPrintf("Config file:\n%s\n", ConfigFile().Chr());
+		}
 		else
-			tPrintf
-			(
-				"Warning: could not save the market code to %s (it will be needed again next run).\n",
-				ConfigFile().Chr()
-			);
+		{
+			tPrintf("Warning: could not save the market code; it will be needed\n");
+			tPrintf("again next run.\n");
+			tPrintf("Config file:\n%s\n", ConfigFile().Chr());
+		}
 
 		return true;
 	}
@@ -896,17 +1062,51 @@ int main(int argc, char** argv)
 	tString inputFile = BMO2SS::ParamInput.Get();
 	if (!tSystem::tFileExists(inputFile))
 	{
-		tPrintf("Error: Input file does not exist: %s\n", inputFile.Chr());
+		tPrintf("Error: Input file does not exist:\n");
+		tPrintf("%s\n", inputFile.Chr());
 		return 1;
 	}
 
 	tString outputFile = BMO2SS::ParamOutput ? BMO2SS::ParamOutput.Get()
 														: BMO2SS::DefaultOutputName(inputFile);
 
-	// Config: market codes (TICKER=CURRENCY=MIC pairs), ignored tickers, and kept (reviewed) tickers, remembered
-	// in a file next to the executable. Market codes are added when the user answers the prompt for a pair that is
-	// not recorded yet; ignored/kept tickers are recorded when the user answers the Norbert's Gambit prompt.
-	tList<tStringItem> marketMap;
+	// If the output file already exists, ask whether to overwrite it.
+	if (tSystem::tFileExists(outputFile))
+	{
+		if (!BMO2SS::CanPromptForMarket())
+		{
+			tPrintf("Error: output file already exists:\n");
+			tPrintf("%s\n", outputFile.Chr());
+			tPrintf("Delete it or use a different output path.\n");
+			return 1;
+		}
+
+		tPrintf("\nOutput file already exists:\n");
+		tPrintf("%s\n", outputFile.Chr());
+		tPrintf("Overwrite? [y/N]: ");
+		fflush(stdout);
+
+		char buf[32];
+		if (!fgets(buf, (int)sizeof(buf), stdin))
+		{
+			tPrintf("\nCancelled: no input available.\n");
+			return 1;
+		}
+
+		tString choice = buf;
+		choice.Trim();
+		if (!choice.IsEqualCI("y") && !choice.IsEqualCI("yes"))
+		{
+			tPrintf("Cancelled: output file was not overwritten.\n");
+			return 1;
+		}
+	}
+
+	// Config: market codes (per ticker, or per ticker+currency), ignored tickers, and kept (reviewed) tickers,
+	// remembered in a file next to the executable (tScript s-expr format). Market codes are added when the user
+	// answers the prompt for a pair that is not recorded yet; ignored/kept tickers are recorded when the user
+	// answers the Norbert's Gambit prompt.
+	tList<BMO2SS::MarketEntry> marketMap;
 	tList<tStringItem> ignoreList;
 	tList<tStringItem> reviewedList;
 	BMO2SS::LoadConfig(marketMap, ignoreList, reviewedList);
@@ -915,7 +1115,8 @@ int main(int argc, char** argv)
 	tSystem::tCSV input;
 	if (!input.LoadFile(inputFile))
 	{
-		tPrintf("Error: Could not load input CSV: %s\n", inputFile.Chr());
+		tPrintf("Error: Could not load input CSV:\n");
+		tPrintf("%s\n", inputFile.Chr());
 		return 1;
 	}
 
@@ -940,7 +1141,8 @@ int main(int argc, char** argv)
 	if (headerRow == -1)
 	{
 		headerRow = 0;
-		tPrintf("Warning: Could not find the 'Transaction Date' header row; assuming the first line.\n");
+		tPrintf("Warning: Could not find the 'Transaction Date' header row;\n");
+		tPrintf("assuming the first line.\n");
 	}
 
 	// ---- Prepare the output document with the ShareSight bulk-trades header.
@@ -1015,7 +1217,7 @@ int main(int argc, char** argv)
 		else
 		{
 			skipped++;
-			tPrintf("Warning: row %d: activity '%s' is not a Buy or Sell; skipped.\n", row + 1, activity.Chr());
+			tPrintf("Info: row %d: activity '%s' is not a Buy or Sell; skipped.\n", row + 1, activity.Chr());
 			continue;
 		}
 
@@ -1135,10 +1337,13 @@ int main(int argc, char** argv)
 
 		if (!BMO2SS::CanPromptForMarket())
 		{
-			tPrintf("Error: no market code is recorded for %s, and stdin is not interactive (no one is there to answer).\n",
+			tPrintf("Error: no market code is recorded for %s, and stdin is not\n",
 					pair.Chr());
-			tPrintf("Record it in %s as a 'TICKER=MIC' or 'TICKER.CURRENCY=MIC' line -- supported MICs: XTSE, XTSX, NEOE, XNAS, XNYS, ARCX (see Data/Readme.txt).\n",
-					BMO2SS::ConfigFile().Chr());
+			tPrintf("interactive.\n");
+			tPrintf("Record it in the config file next to the executable\n");
+			tPrintf("(s-expr format). Supported MICs:\n");
+			tPrintf("XTSE, XTSX, NEOE, XNAS, XNYS, ARCX (see Data/Readme.txt).\n");
+			tPrintf("Config file:\n%s\n", BMO2SS::ConfigFile().Chr());
 			return 1;
 		}
 
@@ -1202,13 +1407,15 @@ int main(int argc, char** argv)
 
 	if (written == 0)
 	{
-		tPrintf("Warning: No Buy or Sell rows were found; the output file will contain only the header.\n");
+		tPrintf("Warning: No Buy or Sell rows were found; the output file\n");
+		tPrintf("will contain only the header.\n");
 	}
 
 	// ---- Save the result.
 	if (!output.SaveFile(outputFile))
 	{
-		tPrintf("Error: Could not save output CSV: %s\n", outputFile.Chr());
+		tPrintf("Error: Could not save output CSV:\n");
+		tPrintf("%s\n", outputFile.Chr());
 		return 1;
 	}
 
@@ -1218,25 +1425,21 @@ int main(int argc, char** argv)
 		Bmoil2ShareSightVersion::Major, Bmoil2ShareSightVersion::Minor, Bmoil2ShareSightVersion::Revision
 	);
 
-	tPrintf
-	(
-		"Converted %d Buy/Sell row(s) from '%s' to '%s'. %d row(s) skipped.\n",
-		written, inputFile.Chr(), outputFile.Chr(), skipped
-	);
+	tPrintf("Success: converted %d Buy/Sell row(s); %d row(s) skipped.\n", written, skipped);
+	tPrintf("Input:\n%s\n", inputFile.Chr());
+	tPrintf("Output:\n%s\n", outputFile.Chr());
 
 	if (droppedNorbert > 0)
-		tPrintf
-		(
-			"Ignored %d row(s) for the detected Norbert's Gambit ticker(s) (%s).\n",
-			droppedNorbert, BMO2SS::ConfigFile().Chr()
-		);
+	{
+		tPrintf("Info: ignored %d row(s) for the detected Norbert's Gambit ticker(s).\n", droppedNorbert);
+		tPrintf("Config file:\n%s\n", BMO2SS::ConfigFile().Chr());
+	}
 
 	if (ignoredRows > 0)
-		tPrintf
-		(
-			"Ignored %d row(s) for tickers on the ignore list (%s).\n",
-			ignoredRows, BMO2SS::ConfigFile().Chr()
-		);
+	{
+		tPrintf("Info: ignored %d row(s) for tickers on the ignore list.\n", ignoredRows);
+		tPrintf("Config file:\n%s\n", BMO2SS::ConfigFile().Chr());
+	}
 
 	return 0;
 }
