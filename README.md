@@ -100,10 +100,10 @@ BUY   RY  TSX     15   (Canadian market)
 ```
 
 These are recognised as a currency conversion vehicle and **both legs
-are excluded from the output** by default. The ticker is added to an
-`[Ignored]` list in the config file so the exclusion is remembered
-across runs. If you need a different set of ignored tickers, edit the
-`[Ignored]` section of the config file directly.
+are excluded from the output** if the user chooses to add the ticker to the
+`[Ignored]` list in the config file. If you need a different set of ignored
+tickers, edit the `[Ignored]` section of the config file directly. The
+detection also works when the buy/sell pair are multi-leg transactions.
 
 ## Building
 It's a CMake C++ project. Install CMake and a C++20 compiler (MSVC on Windows,
