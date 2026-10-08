@@ -22,16 +22,23 @@
 // gets saved in the output CSV. When a pair is not recorded, the tool lists the supported MICs and asks the user to pick
 // one by number, then saves the choice to the config file so it is not asked again.
 //
-// Brokerage fees: a single order may be split across several legs (rows) that share activity, symbol, transaction date,
-// settlement date and price currency -- limit-order fills can settle at slightly different prices, and one or more legs
-// may carry a Total Amount of 0 while a sibling carries the whole order's total. The fee is computed over the WHOLE
-// group: a buy's total is gross + fee, a sell's total is gross - fee, so:
+// Brokerage fees: a single order may be split across several legs (rows) that share ticker, direction and price
+// currency -- limit-order fills can settle at slightly different prices over one or more days, and one or more legs
+// may carry a Total Amount of 0 while a sibling carries the whole order's total.
 //
-// fee = max(0, +/- (sum(|Total Amount|) - sum(|Quantity| * Price)))
+// The tool processes legs sequentially (in CSV order, which is reverse-chronological). For each leg it computes the
+// fee from the accumulated group. A group "closes" when its fee is in range: >= -1.0 (approximately zero, allowing
+// for display rounding) and <= FeeThreshold (default $100). If a leg's fee is out of range (negative, above the
+// threshold, or the total is zero), a group is opened; subsequent legs with the same ticker, direction and currency
+// are absorbed (up to MaxLookaheadDays, default 7) until the fee closes. Multiple groups can be open at the same
+// time. The fee is placed on the leg that closes the group (the "finalizing" leg). A standalone leg whose fee is
+// already in range is a single-leg group.
 //
-// with the sign depending on the side. The fee is placed on the group's LAST non-zero-total leg -- the leg Investorline
-// uses to finalize the order, the one carrying the order's total -- falling back to the first zero-total leg, then to
-// the last leg, and is left blank when it is zero. A standalone leg is just a single-leg group.
+// The fee for a group:
+//   BUY : fee = sum(|Total Amount|) - sum(|Quantity| * Price)
+//   SELL: fee = sum(|Quantity| * Price) - sum(|Total Amount|)
+//
+// FeeThreshold and MaxLookaheadDays are read from (and written to) the config file after each run.
 //
 // Ignored tickers (eg. Norbert's Gambit vehicles): a symbol dropped from the output is recorded in an "Ignored" list in
 // the bmoil2sharesight.cfg config file (next to the executable, alongside the market codes) so it is remembered for
@@ -126,7 +133,6 @@ namespace BMO2SS
 		double totalAbs;				// |Total Amount| (0 when the cell is empty)
 		double gross;					// |Quantity| * Price
 		tString brokerage;				// computed fee; empty == left blank
-		tString groupKey;				// activity|SYMBOL|tradeDate|settleDate|CURRENCY (upper-cased)
 	};
 
 	// One market-code mapping: a ticker -- optionally narrowed to a currency -- to an ISO 10383 MIC. Lives on a tList
@@ -237,8 +243,15 @@ namespace BMO2SS
 	// The legs live in raw (realloc'd) memory; destruct the legs that were constructed in place, then free.
 	void FreeLegs(TradeLeg* legs, int numLegs);
 
-	// Compute the brokerage for every leg (see the definition below for the multi-leg rules).
-	void ComputeBrokerages(TradeLeg* legs, int numLegs);
+	// Fee-grouping parameters (loaded from the config file if present, defaults otherwise).
+	double FeeThreshold = 100.0;	// Maximum acceptable fee per group.
+	int MaxLookaheadDays = 7;	// Maximum day span a group may cover.
+
+	// Convert an ISO date string ("YYYY-MM-DD") to a day number for comparison.
+	long DateToDayNum(const tString& date);
+
+	// Compute the brokerage for every leg (see the file header for the algorithm).
+	bool ComputeBrokerages(TradeLeg* legs, int numLegs);
 }
 
 
@@ -390,6 +403,21 @@ void BMO2SS::LoadConfigExpr
 						reviewed.Append(new tStringItem(t));
 				}
 			}
+			else if (cmd.IsEqualCI("Options"))
+			{
+				for (tExpression e = block.Item1(); e.Valid(); e = e.Next())
+				{
+					int n = e.CountItems();
+					if (n < 2)
+						continue;
+					tString key = e.Item0().GetAtomString();
+					tString val = e.Item1().GetAtomString();
+					if (key.IsEqualCI("feeThreshold"))
+						FeeThreshold = (double)atof(val.Chr());
+					else if (key.IsEqualCI("maxLookaheadDays"))
+						MaxLookaheadDays = atoi(val.Chr());
+				}
+			}
 		}
 	}
 	catch (...)
@@ -534,6 +562,21 @@ bool BMO2SS::SaveConfig(tList<MarketEntry>& markets, tList<tStringItem>& ignored
 		}
 		writer.Comp(key, m->mic);
 	}
+	writer.Dedent();
+	writer.CR();
+	writer.End();
+
+	writer.CR();
+	writer.CR();
+	writer.Rem("Options");
+	writer.Rem("feeThreshold: maximum fee (in trade currency) before a group must absorb more legs.");
+	writer.Rem("maxLookaheadDays: maximum day span for a group before it must close.");
+	writer.Begin();
+	writer.Atom("Options");
+	writer.Indent();
+	writer.CR();
+	writer.Comp("feeThreshold", tsrPrintf("%g", FeeThreshold));
+	writer.Comp("maxLookaheadDays", tsrPrintf("%d", MaxLookaheadDays));
 	writer.Dedent();
 	writer.CR();
 	writer.End();
@@ -974,65 +1017,224 @@ void BMO2SS::FreeLegs(TradeLeg* legs, int numLegs)
 }
 
 
-// Compute the brokerage fee for every leg.
-//
-// Legs that share activity, symbol, transaction date, settlement date, and price currency are one order
-// (a multi-leg trade). For a group the fee is computed from the whole group's numbers. A buy's total
-// amount is gross plus fees (fee = sum(|Total|) - sum(|Qty| * Price)); a sell's total is gross minus fees
-// (fee = sum(|Qty| * Price) - sum(|Total|)). Negative results clamp to zero:
-//     BUY : fee = max(0, sum(|Total Amount|) - sum(|Quantity| * Price))
-//     SELL: fee = max(0, sum(|Quantity| * Price) - sum(|Total Amount|))
-// The fee is placed on the group's LAST non-zero-total leg -- that is the leg Investorline uses to
-// "finalize" the order, the one that carries the order's total while the other legs' totals simply
-// weren't recorded. If every leg in the group has a zero total (malformed order), fall back to the
-// first zero-total leg, then to the group's last leg. A standalone leg is just a single-leg group.
-void BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs)
+long BMO2SS::DateToDayNum(const tString& date)
 {
-	for (int i = 0; i < numLegs; ++i)
-	{
-		// Gather the group's numbers.
-		int firstZero	= -1;
-		int lastLeg		= -1;
-		int lastNonZero	= -1;
-		double sumTotal	= 0.0;
-		double sumGross	= 0.0;
-		for (int j = 0; j < numLegs; ++j)
-		{
-			if (legs[j].groupKey != legs[i].groupKey)
-				continue;
+	// Parse "YYYY-MM-DD" into a Julian Day Number for arithmetic comparison.
+	int year = 0, month = 0, day = 0;
+	sscanf(date.Chr(), "%d-%d-%d", &year, &month, &day);
 
-			sumTotal += legs[j].totalAbs;
-			sumGross += legs[j].gross;
-			lastLeg = j;
-			if (legs[j].zeroTotal)
+	int a = (14 - month) / 12;
+	int y = year + 4800 - a;
+	int m = month + 12 * a - 3;
+	return day + (153L * m + 2) / 5 + 365L * y + y / 4 - y / 100 + y / 400 - 32045;
+}
+
+
+// Compute the brokerage fee for every leg using the sequential group-closing algorithm.
+//
+// Transactions are processed from oldest to newest. Each transaction is submitted to every
+// open group in succession. A group's submit function first checks whether the date has
+// advanced enough to close (fee in range and day passed, or max lookahead exceeded). Only
+// if the group stays open does it check whether the transaction matches and can be consumed.
+// If no group consumes the transaction, a new group is opened for it.
+//
+// Returns true on success; false if the user chose to quit.
+bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs)
+{
+	struct Group
+	{
+		tString ticker;		// upper-case symbol
+		tString direction;	// "BUY" or "SELL"
+		tString currency;		// upper-case currency
+		int lastLegIndex;	// index into legs[] of the most recently added leg (fee goes here)
+		int legCount;		// number of legs absorbed
+		double sumTotal;	// accumulated |Total Amount|
+		double sumGross;	// accumulated |Quantity| * Price
+		long dayNum;		// day number of the group's opening date
+	};
+
+	enum SubmitResult { NOT_CONSUMED, CONSUMED, CLOSED, QUIT };
+
+	auto groupFee = [](const Group& g) -> double
+	{
+		if (g.direction[0] == 'S')
+			return g.sumGross - g.sumTotal;
+		return g.sumTotal - g.sumGross;
+	};
+
+	auto feeInRange = [](double fee) -> bool
+	{
+		return (fee >= -1.0) && (fee <= BMO2SS::FeeThreshold);
+	};
+
+	auto placeFee = [&](Group& g)
+	{
+		double fee = std::round(groupFee(g) * 100.0) / 100.0;
+		if (fee > 0.005)
+			legs[g.lastLegIndex].brokerage = tsrPrintf("%.2f", fee);
+	};
+
+	auto removeGroup = [](Group* groups, int idx, int& numGroups)
+	{
+		for (int j = idx; j < numGroups - 1; ++j)
+			groups[j] = groups[j + 1];
+		--numGroups;
+	};
+
+	const int maxGroups = 64;
+	Group groups[maxGroups];
+	int numGroups = 0;
+
+	// Verify the data is in reverse-chronological order (newest first in the array).
+	// We process from oldest to newest, so the array must be non-increasing by date.
+	for (int i = 0; i < numLegs - 1; ++i)
+	{
+		if (DateToDayNum(legs[i].tradeDate) < DateToDayNum(legs[i + 1].tradeDate))
+		{
+			tPrintf("Error: transactions are not in chronological order.\n");
+			tPrintf("Row %d (%s) is older than row %d (%s).\n",
+				i + 1, legs[i].tradeDate.Chr(), i + 2, legs[i + 1].tradeDate.Chr());
+			tPrintf("The exported data must be sorted newest-first.\n");
+			return false;
+		}
+	}
+
+	// Process from oldest to newest (legs[] is newest-first, so iterate in reverse).
+	for (int i = numLegs - 1; i >= 0; --i)
+	{
+		const TradeLeg& leg = legs[i];
+		long dayNum = DateToDayNum(leg.tradeDate);
+		tString ticker = leg.symbol;
+		ticker.ToUpper();
+		tString cur = leg.currency;
+		cur.ToUpper();
+
+		bool consumed = false;
+		for (int g = 0; g < numGroups; ++g)
+		{
+			long span = dayNum - groups[g].dayNum;
+			if (span < 0) span = -span;
+			double fee = groupFee(groups[g]);
+
+			// If the date has advanced and the fee is valid, close (do NOT consume).
+			if (span > 0 && feeInRange(fee))
 			{
-				if (firstZero == -1)
-					firstZero = j;
+				placeFee(groups[g]);
+				removeGroup(groups, g, numGroups);
+				--g;
+				continue;
 			}
-			else
+
+			// Exceeded the max lookahead: must close (do NOT consume).
+			if (span > (long)BMO2SS::MaxLookaheadDays)
 			{
-				lastNonZero = j;
+				if (feeInRange(fee))
+				{
+					placeFee(groups[g]);
+					removeGroup(groups, g, numGroups);
+					--g;
+					continue;
+				}
+				if (!CanPromptForMarket())
+				{
+					tPrintf("Non-interactive: %s %s group exceeded %d days; fee set to zero.\n",
+						groups[g].direction, groups[g].ticker.Chr(), BMO2SS::MaxLookaheadDays);
+					removeGroup(groups, g, numGroups);
+					--g;
+					continue;
+				}
+				tPrintf("Group %s %s (row %d, %d legs) exceeded the %d-day lookahead with an out-of-range fee.\n",
+					groups[g].direction, groups[g].ticker.Chr(),
+					groups[g].lastLegIndex + 1, groups[g].legCount, BMO2SS::MaxLookaheadDays);
+				tPrintf("Set the fee to zero, or quit? [z/Q]: ");
+				fflush(stdout);
+				char buf[32];
+				if (!fgets(buf, (int)sizeof(buf), stdin))
+				{
+					removeGroup(groups, g, numGroups);
+					--g;
+					continue;
+				}
+				tString choice = buf;
+				choice.Trim();
+				if (choice.IsEqualCI("q"))
+				{
+					tPrintf("Aborted: the output file was not written.\n");
+					return false;
+				}
+				removeGroup(groups, g, numGroups);
+				--g;
+				continue;
+			}
+
+			// Within window, fee not yet in range: check if this transaction matches.
+			if (groups[g].ticker.IsEqualCI(ticker) &&
+				groups[g].direction == leg.transactionType &&
+				groups[g].currency.IsEqualCI(cur))
+			{
+				groups[g].sumTotal += leg.totalAbs;
+				groups[g].sumGross += leg.gross;
+				groups[g].lastLegIndex = i;
+				groups[g].legCount++;
+				consumed = true;
+				break;
 			}
 		}
 
-		// Fee direction depends on the side: buys pay gross + fee, sells receive gross - fee.
-		double fee = (std::strcmp(legs[i].transactionType, "SELL") == 0)
-				? sumGross - sumTotal
-				: sumTotal - sumGross;
-		if (fee < 0.0)
-			fee = 0.0;
-		fee = std::round(fee * 100.0) / 100.0;
-
-		// Place the fee: on the last non-zero-total leg (the one Investorline uses to finalize the order), else on the
-		// first zero-total leg, else on the group's last leg. Exactly one leg (this one) will see i == target, so the
-		// fee is assigned exactly once per group.
-		int target = (lastNonZero != -1) ? lastNonZero : ((firstZero != -1) ? firstZero : lastLeg);
-		if (target != i)
-			continue;
-
-		if (fee > 0.005)
-			legs[i].brokerage = tsrPrintf("%.2f", fee);
+		if (!consumed)
+		{
+			if (numGroups >= maxGroups)
+			{
+				tPrintf("Warning: too many open groups; row %d treated as standalone.\n", i + 1);
+				continue;
+			}
+			Group& g = groups[numGroups++];
+			g.ticker = ticker;
+			g.direction = leg.transactionType;
+			g.currency = cur;
+			g.lastLegIndex = i;
+			g.legCount = 1;
+			g.sumTotal = leg.totalAbs;
+			g.sumGross = leg.gross;
+			g.dayNum = dayNum;
+		}
 	}
+
+	// Final sweep: close any remaining groups.
+	for (int g = 0; g < numGroups; ++g)
+	{
+		double fee = groupFee(groups[g]);
+		if (feeInRange(fee))
+		{
+			placeFee(groups[g]);
+		}
+		else
+		{
+			tPrintf("Warning: %s %s group (row %d, %d legs) has an out-of-range fee.\n",
+				groups[g].direction, groups[g].ticker.Chr(),
+				groups[g].lastLegIndex + 1, groups[g].legCount);
+			if (!CanPromptForMarket())
+			{
+				tPrintf("Non-interactive: fee set to zero.\n");
+				continue;
+			}
+			tPrintf("Set the fee to zero, or quit? [z/Q]: ");
+			fflush(stdout);
+			char buf[32];
+			if (!fgets(buf, (int)sizeof(buf), stdin))
+				continue;
+			tString choice = buf;
+			choice.Trim();
+			if (choice.IsEqualCI("q"))
+			{
+				tPrintf("Aborted: the output file was not written.\n");
+				return false;
+			}
+			tPrintf("Fee set to zero.\n");
+		}
+	}
+
+	return true;
 }
 
 
@@ -1067,8 +1269,15 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	tString outputFile = BMO2SS::ParamOutput ? BMO2SS::ParamOutput.Get()
-														: BMO2SS::DefaultOutputName(inputFile);
+	tString outputFile =	BMO2SS::ParamOutput ?
+							BMO2SS::ParamOutput.Get() :
+							BMO2SS::DefaultOutputName(inputFile);
+
+	tPrintf
+	(
+		"BmoIL2ShareSight V%d.%d.%d\n",
+		Bmoil2ShareSightVersion::Major, Bmoil2ShareSightVersion::Minor, Bmoil2ShareSightVersion::Revision
+	);
 
 	// If the output file already exists, ask whether to overwrite it.
 	if (tSystem::tFileExists(outputFile))
@@ -1297,17 +1506,6 @@ int main(int argc, char** argv)
 		if (leg.gross < 0.0)
 			leg.gross = -leg.gross;
 
-		// Group key: activity, symbol, transaction date, settlement date, price currency (case-insensitive).
-		// Price is deliberately excluded -- legs of one order can fill at slightly different prices.
-		leg.groupKey = transactionType;
-		leg.groupKey += symbol.Upper();
-		leg.groupKey += '|';
-		leg.groupKey += tradeDate;
-		leg.groupKey += '|';
-		leg.groupKey += settleDate;
-		leg.groupKey += '|';
-		leg.groupKey += currency.Upper();
-
 		numLegs++;
 		converted++;
 	}
@@ -1355,7 +1553,11 @@ int main(int argc, char** argv)
 	}
 
 	// Compute the fees (grouping multi-leg orders), then write the rows back in input order.
-	BMO2SS::ComputeBrokerages(legs, numLegs);
+	if (!BMO2SS::ComputeBrokerages(legs, numLegs))
+	{
+		BMO2SS::FreeLegs(legs, numLegs);
+		return 1;
+	}
 
 	int outRow = 1;
 	int written = 0;
@@ -1411,7 +1613,7 @@ int main(int argc, char** argv)
 		tPrintf("will contain only the header.\n");
 	}
 
-	// ---- Save the result.
+	// Save the result.
 	if (!output.SaveFile(outputFile))
 	{
 		tPrintf("Error: Could not save output CSV:\n");
@@ -1419,27 +1621,21 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	tPrintf
-	(
-		"BmoIL2ShareSight V%d.%d.%d\n",
-		Bmoil2ShareSightVersion::Major, Bmoil2ShareSightVersion::Minor, Bmoil2ShareSightVersion::Revision
-	);
+	// Persist the config file (markets, ignored/reviewed tickers, and fee thresholds).
+	BMO2SS::SaveConfig(marketMap, ignoreList, reviewedList);
 
-	tPrintf("Success: converted %d Buy/Sell row(s); %d row(s) skipped.\n", written, skipped);
-	tPrintf("Input:\n%s\n", inputFile.Chr());
-	tPrintf("Output:\n%s\n", outputFile.Chr());
+	tPrintf("Input   : %s\n", inputFile.Chr());
+	tPrintf("Output  : %s\n", outputFile.Chr());
 
 	if (droppedNorbert > 0)
-	{
-		tPrintf("Info: ignored %d row(s) for the detected Norbert's Gambit ticker(s).\n", droppedNorbert);
-		tPrintf("Config file:\n%s\n", BMO2SS::ConfigFile().Chr());
-	}
+		tPrintf("Info    : Ignored %d row(s) for the detected Norbert's Gambit ticker(s).\n", droppedNorbert);
 
 	if (ignoredRows > 0)
-	{
-		tPrintf("Info: ignored %d row(s) for tickers on the ignore list.\n", ignoredRows);
-		tPrintf("Config file:\n%s\n", BMO2SS::ConfigFile().Chr());
-	}
+		tPrintf("Info    : Ignored %d row(s) for tickers on the ignore list.\n", ignoredRows);
 
+	if ((droppedNorbert > 0) || (ignoredRows > 0))
+		tPrintf("Config  : %s\n", BMO2SS::ConfigFile().Chr());
+
+	tPrintf("Success : Converted %d Buy/Sell row(s); %d row(s) skipped.\n", written, skipped);
 	return 0;
 }
