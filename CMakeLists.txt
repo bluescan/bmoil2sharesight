@@ -58,6 +58,7 @@ FetchContent_MakeAvailable(tacent)
 add_executable(
 	${PROJECT_NAME}
 	Src/BmoIL2ShareSight.cpp
+	Src/Config.cpp
 	Src/Version.cmake.h
 )
 

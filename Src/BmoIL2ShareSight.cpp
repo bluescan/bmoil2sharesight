@@ -73,6 +73,7 @@
 #include <System/tFile.h>
 #include <System/tPrint.h>
 #include <System/tScript.h>
+#include "Config.h"
 
 
 namespace Bmoil2ShareSightVersion
@@ -121,27 +122,18 @@ namespace BMO2SS
 	// One leg of a (possibly multi-leg) buy/sell trade, kept in input order.
 	struct TradeLeg
 	{
-		int inRow;						// 1-based row in the input file (for warnings)
-		tString tradeDate;
-		tString settleDate;
-		tString symbol;
-		tString currency;				// the Price Currency of the leg (part of the (ticker, currency) market key)
-		tString quantity;
-		tString price;
-		const char* transactionType;	// "BUY" or "SELL"
-		bool zeroTotal;					// Total Amount cell was empty or 0
-		double totalAbs;				// |Total Amount| (0 when the cell is empty)
-		double gross;					// |Quantity| * Price
-		tString brokerage;				// computed fee; empty == left blank
-	};
-
-	// One market-code mapping: a ticker -- optionally narrowed to a currency -- to an ISO 10383 MIC. Lives on a tList
-	// (an intrusive list, so it derives from tLink; see the PairCount notes above).
-	struct MarketEntry : tLink<MarketEntry>
-	{
-		tString ticker;		// upper-case, eg. "MSFT"
-		tString currency;		// upper-case ISO 4217 currency (eg. "USD"), or empty for any currency
-		tString mic;			// upper-case ISO 10383 MIC, eg. "XNYS"
+		int InRow;						// 1-based row in the input file (for warnings)
+		tString TradeDate;
+		tString SettleDate;
+		tString Symbol;
+		tString Currency;				// the Price Currency of the leg (part of the (ticker, currency) market key)
+		tString Quantity;
+		tString Price;
+		const char* TransactionType;	// "BUY" or "SELL"
+		bool ZeroTotal;					// Total Amount cell was empty or 0
+		double TotalAbs;				// |Total Amount| (0 when the cell is empty)
+		double Gross;					// |Quantity| * Price
+		tString Brokerage;				// computed fee; empty == left blank
 	};
 
 	// Replaces the file extension of the supplied path with "_sharesight.csv".
@@ -153,7 +145,6 @@ namespace BMO2SS
 	// In s-expr format: "Markets" entries are [TICKER:CURR MIC] (MIC is an ISO 10383 code);
 	// "Ignored" entries are tickers dropped from the output; "Reviewed" entries are tickers
 	// flagged as a possible Norbert's Gambit and kept (so the tool does not ask again).
-	// Legacy KEY=VALUE format (TICKER.CURRENCY=MIC) is also read for backward compatibility.
 	tString ConfigFile();
 
 	// True if the symbol is on the ignore list (case-insensitive).
@@ -162,55 +153,36 @@ namespace BMO2SS
 	// True if the symbol is on the kept (reviewed) list -- flagged as a Norbert's Gambit and kept -- case-insensitive.
 	bool IsReviewed(const tString& symbol, tList<tStringItem>& reviewed);
 
-	// True when the config file is in the tScript s-expr format (any line whose first non-blank char is '['); otherwise
-	// it is the legacy "TICKER[.CURRENCY]=MIC" / plain-ticker format.
-	bool IsExprConfig(const tString& text);
-
-	// Parse the s-expr config file into the market entries and the ignore/reviewed lists.
-	void LoadConfigExpr(const tString& text, tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed);
-
-	// Parse the legacy config file (the format used before the s-expr one) into the same lists.
-	void LoadConfigLegacy(const tString& text, tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed);
-
-	// Load the market codes and the ignore/kept lists from the config file, if the file exists. Tries the s-expr format
-	// first and falls back to the legacy format for files written before the switch.
-	void LoadConfig(tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed);
-
 	// Record a ticker in one of the two ticker lists (case-insensitive); returns true if it was not already listed
 	// (i.e. the config file must be saved).
 	bool AddIgnored(tList<tStringItem>& ignored, const tString& ticker);
 	bool AddReviewed(tList<tStringItem>& reviewed, const tString& ticker);
 
-	// Persist the market codes and the ignore/kept lists to the config file in the tScript s-expr format.
-	bool SaveConfig(tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed);
-
 	// Convert a MIC to the ShareSight Market Code that is saved in the output CSV. Returns an empty
 	// string when the MIC is not one of the supported codes (see the definition below).
 	tString MarketCodeFromMIC(const tString& mic);
 
-	// The ShareSight Market Code recorded for a (ticker, currency) pair; falls back from
-	// TICKER.CURRENCY to TICKER. Empty when the pair is not recorded.
+	// The ShareSight Market Code recorded for a (ticker, currency) pair. Empty when the pair is not recorded.
 	tString MarketCodeFor(tList<MarketEntry>& markets, const tString& symbol, const tString& currency);
 
 	// True when a market code can be asked for: stdin is an interactive terminal, or piped input that
 	// already has data (an empty pipe cannot answer, so the prompt would only block).
 	bool CanPromptForMarket();
 
-	// Ask (numbered menu) which market a (ticker, currency) pair traded on, record the choice in the
-	// market list and save the config file. Returns false to abort the run.
+	// Ask (numbered menu) which market a (ticker, currency) pair traded on and record the choice in the
+	// market list (the config file is persisted when the run exits). Returns false to abort the run.
 	bool PromptForMarket
 	(
-		tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
-		const tString& symbol, const tString& currency
+		tList<MarketEntry>& markets, const tString& symbol, const tString& currency
 	);
 
 	// A (ticker, currency) pair present in the input, with a count of the matching buy/sell rows.
 	// Derives from tLink so it can live on a tList (intrusive list; see the tList.h notes).
 	struct PairCount : tLink<PairCount>
 	{
-		tString symbol;
-		tString currency;
-		unsigned long count;
+		tString Symbol;
+		tString Currency;
+		unsigned long Count;
 	};
 
 	// A symbol suspected of Norbert's Gambit: on at least one day its total Buy quantity in one currency equals
@@ -218,9 +190,9 @@ namespace BMO2SS
 	// Derives from tLink so it can live on a tList.
 	struct NorbertSuspect : tLink<NorbertSuspect>
 	{
-		tString symbol;
-		tList<tStringItem> currencies;
-		unsigned long totalRows;   // buy/sell rows for this symbol (across all its currencies/days)
+		tString Symbol;
+		tList<tStringItem> Currencies;
+		unsigned long TotalRows;   // buy/sell rows for this symbol (across all its currencies/days)
 	};
 
 	// Detect Norbert's Gambit: symbols bought in one currency and sold in another on the same day with matching
@@ -232,26 +204,22 @@ namespace BMO2SS
 		tList<tStringItem>& reviewed, tList<NorbertSuspect>& suspects
 	);
 
-	// Ask the user to ignore or keep each suspected Norbert's Gambit symbol, updating the ignore/kept lists and
-	// saving the config file as the choices come in.
+	// Ask the user to ignore or keep each suspected Norbert's Gambit symbol, updating the ignore/kept lists
+	// (the config file is persisted when the run exits).
 	void PromptForNorbert
 	(
-		tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
+		tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
 		const tList<NorbertSuspect>& suspects
 	);
 
 	// The legs live in raw (realloc'd) memory; destruct the legs that were constructed in place, then free.
 	void FreeLegs(TradeLeg* legs, int numLegs);
 
-	// Fee-grouping parameters (loaded from the config file if present, defaults otherwise).
-	double FeeThreshold = 100.0;	// Maximum acceptable fee per group.
-	int MaxLookaheadDays = 7;	// Maximum day span a group may cover.
-
 	// Convert an ISO date string ("YYYY-MM-DD") to a day number for comparison.
 	long DateToDayNum(const tString& date);
 
 	// Compute the brokerage for every leg (see the file header for the algorithm).
-	bool ComputeBrokerages(TradeLeg* legs, int numLegs);
+	bool ComputeBrokerages(TradeLeg* legs, int numLegs, double feeThreshold, int maxLookaheadDays);
 }
 
 
@@ -296,224 +264,6 @@ bool BMO2SS::IsReviewed(const tString& symbol, tList<tStringItem>& reviewed)
 }
 
 
-bool BMO2SS::IsExprConfig(const tString& text)
-{
-	tList<tStringItem> lines;
-	tStd::tExplode(lines, text, '\n');
-	for (tStringItem* item = lines.First(); item; item = item->Next())
-	{
-		tString line = *item;
-		line.Trim();
-		if (line.Length() > 0 && line[0] == '[')
-			return true;
-	}
-
-	return false;
-}
-
-
-void BMO2SS::LoadConfigExpr
-(
-	const tString& text, tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed
-)
-{
-	// A malformed config should not abort the run; tScript signals parse errors by throwing, so swallow them and
-	// leave the lists as-is.
-	try
-	{
-		tExprReader reader(text, false);
-
-		// The file is a sequence of top-level blocks, each headed by a command word: Markets, Ignored or Reviewed.
-		for (tExpression block = reader.First(); block.Valid(); block = block.Next())
-		{
-			tString cmd = block.Command().GetAtomString();
-
-			if (cmd.IsEqualCI("Markets"))
-			{
-				// Each entry is [ TICKER:CURR MIC ] (new) or [ TICKER MIC ] / [ TICKER CURRENCY MIC ] (legacy).
-				for (tExpression e = block.Item1(); e.Valid(); e = e.Next())
-				{
-					int n = e.CountItems();
-					if (n < 2)
-						continue;
-
-					tString first = e.Item0().GetAtomString();
-					tString mic	= e.ItemN(n - 1).GetAtomString();
-
-					tString ticker;
-					tString cur;
-					int colon = -1;
-					for (int i = 0; i < first.Length(); ++i)
-					{
-						if (first[i] == ':')
-						{
-							colon = i;
-							break;
-						}
-					}
-					if (colon > 0)
-					{
-						ticker = first.Left(colon);
-						cur = first.Mid(colon + 1, first.Length() - colon - 1);
-					}
-					else if (n >= 3)
-					{
-						ticker = first;
-						cur = e.Item1().GetAtomString();
-					}
-					else
-					{
-						ticker = first;
-					}
-
-					ticker.Trim().ToUpper();
-					cur.Trim().ToUpper();
-					mic.Trim().ToUpper();
-					if (ticker.IsEmpty() || mic.IsEmpty() || MarketCodeFromMIC(mic).IsEmpty())
-					{
-						tPrintf("Warning: ignoring an invalid or unsupported\n");
-						tPrintf("market entry in the config file.\n");
-						continue;
-					}
-
-					MarketEntry* entry = new MarketEntry();
-					entry->ticker = ticker;
-					entry->currency = cur;
-					entry->mic = mic;
-					markets.Append(entry);
-				}
-			}
-			else if (cmd.IsEqualCI("Ignored"))
-			{
-				for (tExpression e = block.Item1(); e.Valid(); e = e.Next())
-				{
-					tString t = e.GetAtomString();
-					t.Trim();
-					if (!t.IsEmpty())
-						ignored.Append(new tStringItem(t));
-				}
-			}
-			else if (cmd.IsEqualCI("Reviewed"))
-			{
-				for (tExpression e = block.Item1(); e.Valid(); e = e.Next())
-				{
-					tString t = e.GetAtomString();
-					t.Trim();
-					if (!t.IsEmpty())
-						reviewed.Append(new tStringItem(t));
-				}
-			}
-			else if (cmd.IsEqualCI("Options"))
-			{
-				for (tExpression e = block.Item1(); e.Valid(); e = e.Next())
-				{
-					int n = e.CountItems();
-					if (n < 2)
-						continue;
-					tString key = e.Item0().GetAtomString();
-					tString val = e.Item1().GetAtomString();
-					if (key.IsEqualCI("feeThreshold"))
-						FeeThreshold = (double)atof(val.Chr());
-					else if (key.IsEqualCI("maxLookaheadDays"))
-						MaxLookaheadDays = atoi(val.Chr());
-				}
-			}
-		}
-	}
-	catch (...)
-	{
-		// Leave the lists as-is; a later successful save will rewrite a valid file.
-	}
-}
-
-
-void BMO2SS::LoadConfigLegacy
-(
-	const tString& text, tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed
-)
-{
-	tList<tStringItem> lines;
-	tStd::tExplode(lines, text, '\n');
-	for (tStringItem* item = lines.First(); item; item = item->Next())
-	{
-		tString line = *item;
-		line.Trim();
-		if (line.IsEmpty() || line[0] == '#')
-			continue;
-
-		// A line carrying '=' is a market-code entry (TICKER=MIC or TICKER.CURRENCY=MIC). Anything else is a
-		// ticker: a plain one is ignored, one prefixed with '!' was flagged as a Norbert's Gambit and kept.
-		bool hasEquals = false;
-		for (int i = 0; i < line.Length(); ++i)
-		{
-			if (line[i] == '=')
-			{
-				hasEquals = true;
-				break;
-			}
-		}
-
-		if (!hasEquals)
-		{
-			if (line[0] == '!')
-			{
-				reviewed.Append(new tStringItem(line.Mid(1, (int)line.Length() - 1)));
-			}
-			else
-			{
-				ignored.Append(new tStringItem(line));
-			}
-			continue;
-		}
-
-		// Split "TICKER(.CURRENCY)=MIC". ExtractLeft('=') returns the left part; Right('=') is non-destructive.
-		tString keySrc = line;
-		tString micSrc = line;
-		tString key = keySrc.ExtractLeft('=');
-		key.Trim().ToUpper();
-		tString mic = micSrc.Right('=');
-		mic.Trim().ToUpper();
-		if (key.IsEmpty() || mic.IsEmpty() || MarketCodeFromMIC(mic).IsEmpty())
-		{
-			tPrintf("Warning: ignoring an invalid or unsupported market entry in the config file.\n");
-			continue;
-		}
-
-		MarketEntry* entry = new MarketEntry();
-		entry->ticker = key;
-		entry->mic = mic;
-		int dot = -1;
-		for (int i = 0; i < key.Length(); ++i)
-		{
-			if (key[i] == '.')
-			{
-				dot = i;
-				break;
-			}
-		}
-		if (dot > 0)
-		{
-			entry->ticker = key.Left(dot);
-			entry->currency = key.Mid(dot + 1, key.Length() - dot - 1);
-		}
-		markets.Append(entry);
-	}
-}
-
-
-void BMO2SS::LoadConfig(tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed)
-{
-	tString text;
-	if (!tSystem::tLoadFile(ConfigFile(), text))
-		return;
-
-	if (IsExprConfig(text))
-		LoadConfigExpr(text, markets, ignored, reviewed);
-	else
-		LoadConfigLegacy(text, markets, ignored, reviewed);
-}
-
-
 bool BMO2SS::AddIgnored(tList<tStringItem>& ignored, const tString& ticker)
 {
 	tString clean = ticker;
@@ -538,85 +288,6 @@ bool BMO2SS::AddReviewed(tList<tStringItem>& reviewed, const tString& ticker)
 }
 
 
-bool BMO2SS::SaveConfig(tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed)
-{
-	// The writer creates (or overwrites) the file. It is written in the tScript s-expr notation.
-	tExprWriter writer(ConfigFile());
-
-	writer.Rem("BmoIL2ShareSight configuration (tScript s-expr format).");
-	writer.Rem("Markets: [TICKER:CURR MIC]; the MIC is an ISO 10383 code");
-	writer.Rem("converted to the ShareSight Market Code in the output CSV.");
-
-	writer.Rem("Markets");
-	writer.Begin();
-	writer.Atom("Markets");
-	writer.Indent();
-	writer.CR();
-	for (MarketEntry* m = markets.First(); m; m = m->Next())
-	{
-		tString key = m->ticker;
-		if (!m->currency.IsEmpty())
-		{
-			key += ':';
-			key += m->currency;
-		}
-		writer.Comp(key, m->mic);
-	}
-	writer.Dedent();
-	writer.CR();
-	writer.End();
-
-	writer.CR();
-	writer.CR();
-	writer.Rem("Options");
-	writer.Rem("feeThreshold: maximum fee (in trade currency) before a group must absorb more legs.");
-	writer.Rem("maxLookaheadDays: maximum day span for a group before it must close.");
-	writer.Begin();
-	writer.Atom("Options");
-	writer.Indent();
-	writer.CR();
-	writer.Comp("feeThreshold", tsrPrintf("%g", FeeThreshold));
-	writer.Comp("maxLookaheadDays", tsrPrintf("%d", MaxLookaheadDays));
-	writer.Dedent();
-	writer.CR();
-	writer.End();
-
-	if (ignored.First())
-	{
-		writer.CR();
-		writer.CR();
-		writer.Rem("Ignored");
-		writer.Rem("Tickers dropped from the output (eg. a Norbert's Gambit vehicle).");
-		writer.Begin();
-		writer.Atom("Ignored");
-		writer.Indent();
-		writer.CR();
-		for (tStringItem* item = ignored.First(); item; item = item->Next())
-			writer.Atom(*item);
-		writer.Dedent();
-		writer.CR();
-		writer.End();
-	}
-
-	if (reviewed.First())
-	{
-		writer.Rem("Reviewed");
-		writer.Rem("Flagged as a possible Norbert's Gambit and kept, so not asked again.");
-		writer.Begin();
-		writer.Atom("Reviewed");
-		writer.Indent();
-		writer.CR();
-		for (tStringItem* item = reviewed.First(); item; item = item->Next())
-			writer.Atom(*item);
-		writer.Dedent();
-		writer.CR();
-		writer.End();
-	}
-
-	return true;
-}
-
-
 void BMO2SS::FindNorbertSuspects
 (
 	const TradeLeg* legs, int numLegs, tList<tStringItem>& ignored,
@@ -624,36 +295,30 @@ void BMO2SS::FindNorbertSuspects
 )
 {
 	if (numLegs < 2)
-	{
 		return;
-	}
 
 	// First pass: collect the (ticker, currency) pairs present in the input, in the order first seen, and count the
 	// number of buy/sell rows for each. Tickers already on the ignore or kept lists are skipped (their rows are
 	// dropped -- or already accepted -- anyway, so there is nothing to offer).
 	tList<PairCount> pairs;
-	for (int i = 0; i < numLegs; ++i)
+	for (int i = 0; i < numLegs; i++)
 	{
-		tString symbol = legs[i].symbol;
+		tString symbol = legs[i].Symbol;
 		symbol.Trim().ToUpper();
 		if (symbol.IsEmpty() || IsIgnored(symbol, ignored) || IsReviewed(symbol, reviewed))
-		{
 			continue;
-		}
 
-		tString currency = legs[i].currency;
+		tString currency = legs[i].Currency;
 		currency.Trim().ToUpper();
 		if (currency.IsEmpty())
-		{
 			continue;
-		}
 
 		PairCount* found = nullptr;
 		for (PairCount* p = pairs.First(); p; p = p->Next())
 		{
-			if (p->symbol.IsEqualCI(symbol) && p->currency.IsEqualCI(currency))
+			if (p->Symbol.IsEqualCI(symbol) && p->Currency.IsEqualCI(currency))
 			{
-				p->count += 1;
+				p->Count += 1;
 				found = p;
 				break;
 			}
@@ -661,9 +326,9 @@ void BMO2SS::FindNorbertSuspects
 		if (!found)
 		{
 			found = new PairCount();
-			found->symbol = symbol;
-			found->currency = currency;
-			found->count = 1;
+			found->Symbol = symbol;
+			found->Currency = currency;
+			found->Count = 1;
 			pairs.Append(found);
 		}
 	}
@@ -676,56 +341,49 @@ void BMO2SS::FindNorbertSuspects
 		bool listed = false;
 		for (NorbertSuspect* s = suspects.First(); s; s = s->Next())
 		{
-			if (s->symbol.IsEqualCI(p->symbol))
+			if (s->Symbol.IsEqualCI(p->Symbol))
 			{
 				listed = true;
 				break;
 			}
 		}
 		if (listed)
-		{
 			continue;
-		}
 
 		bool match = false;
 		for (PairCount* q = pairs.First(); q && !match; q = q->Next())
 		{
 			// The other currency must be a different one for the same symbol.
-			if (q == p || !q->symbol.IsEqualCI(p->symbol) || q->currency.IsEqualCI(p->currency))
-			{
+			if (q == p || !q->Symbol.IsEqualCI(p->Symbol) || q->Currency.IsEqualCI(p->Currency))
 				continue;
-			}
 
 			// Compare, day by day, the buy/sell share totals of the two currencies. Whole-share counts are compared
 			// with a small tolerance to absorb any floating-point rounding.
-			for (int i = 0; i < numLegs && !match; ++i)
+			for (int i = 0; i < numLegs && !match; i++)
 			{
-				if (!legs[i].symbol.IsEqualCI(p->symbol))
-				{
+				if (!legs[i].Symbol.IsEqualCI(p->Symbol))
 					continue;
-				}
-				const tString date = legs[i].tradeDate;
+
+				const tString date = legs[i].TradeDate;
 
 				double pBuy = 0.0, pSell = 0.0, qBuy = 0.0, qSell = 0.0;
-				for (int j = 0; j < numLegs; ++j)
+				for (int j = 0; j < numLegs; j++)
 				{
 					const TradeLeg& leg = legs[j];
-					if (!leg.symbol.IsEqualCI(p->symbol) || !leg.tradeDate.IsEqualCI(date))
-					{
+					if (!leg.Symbol.IsEqualCI(p->Symbol) || !leg.TradeDate.IsEqualCI(date))
 						continue;
-					}
-					double qnt = leg.quantity.GetAsDouble();
+
+					double qnt = leg.Quantity.GetAsDouble();
 					if (qnt < 0.0)
-					{
 						qnt = -qnt;
-					}
-					const bool isP = leg.currency.IsEqualCI(p->currency);
-					const bool isQ = leg.currency.IsEqualCI(q->currency);
-					if (isP && leg.transactionType[0] == 'B')
+
+					const bool isP = leg.Currency.IsEqualCI(p->Currency);
+					const bool isQ = leg.Currency.IsEqualCI(q->Currency);
+					if (isP && leg.TransactionType[0] == 'B')
 						pBuy += qnt;
 					else if (isP)
 						pSell += qnt;
-					else if (isQ && leg.transactionType[0] == 'B')
+					else if (isQ && leg.TransactionType[0] == 'B')
 						qBuy += qnt;
 					else if (isQ)
 						qSell += qnt;
@@ -739,23 +397,21 @@ void BMO2SS::FindNorbertSuspects
 		}
 
 		if (!match)
-		{
 			continue;
-		}
 
 		// Record the suspect: the symbol, every currency it traded in, and its total number of buy/sell rows.
 		NorbertSuspect* sus = new NorbertSuspect();
-		sus->symbol = p->symbol;
+		sus->Symbol = p->Symbol;
 		unsigned long total = 0;
 		for (PairCount* pc = pairs.First(); pc; pc = pc->Next())
 		{
-			if (pc->symbol.IsEqualCI(p->symbol))
+			if (pc->Symbol.IsEqualCI(p->Symbol))
 			{
-				total += pc->count;
-				sus->currencies.Append(new tStringItem(pc->currency));
+				total += pc->Count;
+				sus->Currencies.Append(new tStringItem(pc->Currency));
 			}
 		}
-		sus->totalRows = total;
+		sus->TotalRows = total;
 		suspects.Append(sus);
 	}
 }
@@ -763,20 +419,19 @@ void BMO2SS::FindNorbertSuspects
 
 void BMO2SS::PromptForNorbert
 (
-	tList<MarketEntry>& markets, tList<tStringItem>& ignored,
-	tList<tStringItem>& reviewed, const tList<NorbertSuspect>& suspects
+	tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
+	const tList<NorbertSuspect>& suspects
 )
 {
 	for (const NorbertSuspect* s = suspects.First(); s; s = s->Next())
 	{
 		// Build the currency list for the message (eg. "CAD, USD").
 		tString curList;
-		for (tStringItem* c = s->currencies.First(); c; c = c->Next())
+		for (tStringItem* c = s->Currencies.First(); c; c = c->Next())
 		{
 			if (curList.IsValid())
-			{
 				curList += ", ";
-			}
+
 			curList += *c;
 		}
 
@@ -787,7 +442,7 @@ void BMO2SS::PromptForNorbert
 				"\nPossible Norbert's Gambit detected for %s (%s, %u row(s)).\n"
 				"It is not ignored and is converted as-is.\n"
 				"Re-run in an interactive shell to decide.\n",
-				s->symbol.Chr(), curList.Chr(), s->totalRows
+				s->Symbol.Chr(), curList.Chr(), s->TotalRows
 			);
 			continue;
 		}
@@ -798,19 +453,19 @@ void BMO2SS::PromptForNorbert
 			"another (%s) on the same day with matching share counts (%u row(s)).\n"
 			"Such legs are usually the two halves of the gambit, which are not real\n"
 			"trades for ShareSight.\n",
-			s->symbol.Chr(), curList.Chr(), s->totalRows
+			s->Symbol.Chr(), curList.Chr(), s->TotalRows
 		);
 
 		char buf[32];
 		tString choice;
 		while (1)
 		{
-			tPrintf("Ignore %s? [y/N]: ", s->symbol.Chr());
+			tPrintf("Ignore %s? [y/N]: ", s->Symbol.Chr());
 			fflush(stdout);
 			if (!fgets(buf, (int)sizeof(buf), stdin))
 			{
-				AddReviewed(reviewed, s->symbol);
-				tPrintf("No input; keeping %s in the output (not asked again).\n", s->symbol.Chr());
+				AddReviewed(reviewed, s->Symbol);
+				tPrintf("No input; keeping %s in the output (not asked again).\n", s->Symbol.Chr());
 				break;
 			}
 
@@ -818,23 +473,17 @@ void BMO2SS::PromptForNorbert
 			choice.Trim();
 			if (choice.IsEqualCI("y") || choice.IsEqualCI("yes"))
 			{
-				AddIgnored(ignored, s->symbol);
-				tPrintf("Ignoring %s from the output.\n", s->symbol.Chr());
+				AddIgnored(ignored, s->Symbol);
+				tPrintf("Ignoring %s from the output.\n", s->Symbol.Chr());
 				break;
 			}
 			if (choice.IsEmpty() || choice.IsEqualCI("n") || choice.IsEqualCI("no"))
 			{
-				AddReviewed(reviewed, s->symbol);
-				tPrintf("Keeping %s in the output (not asked again).\n", s->symbol.Chr());
+				AddReviewed(reviewed, s->Symbol);
+				tPrintf("Keeping %s in the output (not asked again).\n", s->Symbol.Chr());
 				break;
 			}
 			tPrintf("Please answer 'y' to ignore or 'n' to keep.\n");
-		}
-
-		if (!SaveConfig(markets, ignored, reviewed))
-		{
-			tPrintf("Warning: could not save the config file; choice for %s\n", s->symbol.Chr());
-			tPrintf("will be asked again.\n");
 		}
 	}
 }
@@ -868,20 +517,14 @@ tString BMO2SS::MarketCodeFor(tList<MarketEntry>& markets, const tString& symbol
 	if (key.IsEmpty())
 		return tString();
 
-	tString cur;
-	if (!currency.IsEmpty())
-	{
-		cur = currency;
-		cur.Trim().ToUpper();
-	}
+	tString cur = currency;
+	cur.Trim().ToUpper();
 
-	// Prefer the exact (ticker, currency) pair; fall back to the ticker alone.
+	// Match the exact (ticker, currency) pair; every recorded market carries a currency.
 	for (MarketEntry* m = markets.First(); m; m = m->Next())
 	{
-		if (!m->ticker.IsEqualCI(key))
-			continue;
-		if (cur.IsEmpty() || m->currency.IsEmpty() || m->currency.IsEqualCI(cur))
-			return MarketCodeFromMIC(m->mic);
+		if (m->Ticker.IsEqualCI(key) && m->Currency.IsEqualCI(cur))
+			return MarketCodeFromMIC(m->Mic);
 	}
 
 	return tString();
@@ -910,18 +553,17 @@ bool BMO2SS::CanPromptForMarket()
 
 bool BMO2SS::PromptForMarket
 (
-	tList<MarketEntry>& markets, tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
-	const tString& symbol, const tString& currency
+	tList<MarketEntry>& markets, const tString& symbol, const tString& currency
 )
 {
-	// The supported MICs in a stable order; the menu numbers follow this list. desc is the long
+	// The supported MICs in a stable order; the menu numbers follow this list. Desc is the long
 	// market name shown in the menu so the user can tell the entries apart (eg. XNYS vs ARCX) --
 	// kept in sync with the table in Data/Readme.txt.
 	static const struct
 	{
-		const char* mic;
-		const char* code;
-		const char* desc;
+		const char* Mic;
+		const char* Code;
+		const char* Desc;
 	} menu[] =
 	{
 		{ "XTSE", "TSX",	"Toronto Stock Exchange" },
@@ -936,19 +578,16 @@ bool BMO2SS::PromptForMarket
 
 	tString key = symbol;
 	key.Trim().ToUpper();
-	if (!currency.IsEmpty())
-	{
-		key += ':';
-		tString cur = currency;
-		cur.Trim().ToUpper();
-		key += cur;
-	}
+	tString cur = currency;
+	cur.Trim().ToUpper();
+	key += ':';
+	key += cur;
 
 	while (1)
 	{
 		tPrintf("\nWhich market did %s trade on?\n", key.Chr());
-		for (int i = 0; i < menuCount; ++i)
-			tPrintf("  %d. %s  (ShareSight: %-6s) -- %s\n", i + 1, menu[i].mic, menu[i].code, menu[i].desc);
+		for (int i = 0; i < menuCount; i++)
+			tPrintf("  %d. %s  (ShareSight: %-6s) -- %s\n", i + 1, menu[i].Mic, menu[i].Code, menu[i].Desc);
 
 		tPrintf("Enter 1-%d, or q to cancel: ", menuCount);
 		fflush(stdout);
@@ -982,24 +621,15 @@ bool BMO2SS::PromptForMarket
 		}
 
 		MarketEntry* entry = new MarketEntry();
-		entry->ticker = symbol;
-		entry->ticker.Trim().ToUpper();
-		entry->currency = currency;
-		entry->currency.Trim().ToUpper();
-		entry->mic = menu[index - 1].mic;
+		entry->Ticker = symbol;
+		entry->Ticker.Trim().ToUpper();
+		entry->Currency = currency;
+		entry->Currency.Trim().ToUpper();
+		entry->Mic = menu[index - 1].Mic;
 		markets.Append(entry);
 
-		if (SaveConfig(markets, ignored, reviewed))
-		{
-			tPrintf("Saved %s %s (ShareSight Market Code: %s).\n", key.Chr(), menu[index - 1].mic, menu[index - 1].code);
-			tPrintf("Config file:\n%s\n", ConfigFile().Chr());
-		}
-		else
-		{
-			tPrintf("Warning: could not save the market code; it will be needed\n");
-			tPrintf("again next run.\n");
-			tPrintf("Config file:\n%s\n", ConfigFile().Chr());
-		}
+		tPrintf("Recorded %s %s (ShareSight Market Code: %s).\n", key.Chr(), menu[index - 1].Mic, menu[index - 1].Code);
+		tPrintf("Config file:\n%s\n", ConfigFile().Chr());
 
 		return true;
 	}
@@ -1010,7 +640,7 @@ bool BMO2SS::PromptForMarket
 
 void BMO2SS::FreeLegs(TradeLeg* legs, int numLegs)
 {
-	for (int i = 0; i < numLegs; ++i)
+	for (int i = 0; i < numLegs; i++)
 		legs[i].~TradeLeg();
 
 	free(legs);
@@ -1039,46 +669,46 @@ long BMO2SS::DateToDayNum(const tString& date)
 // If no group consumes the transaction, a new group is opened for it.
 //
 // Returns true on success; false if the user chose to quit.
-bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs)
+bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs, double feeThreshold, int maxLookaheadDays)
 {
 	struct Group
 	{
-		tString ticker;		// upper-case symbol
-		tString direction;	// "BUY" or "SELL"
-		tString currency;		// upper-case currency
-		int lastLegIndex;	// index into legs[] of the most recently added leg (fee goes here)
-		int legCount;		// number of legs absorbed
-		double sumTotal;	// accumulated |Total Amount|
-		double sumGross;	// accumulated |Quantity| * Price
-		long dayNum;		// day number of the group's opening date
+		tString Ticker;		// upper-case symbol
+		tString Direction;	// "BUY" or "SELL"
+		tString Currency;	// upper-case currency
+		int LastLegIndex;	// index into legs[] of the most recently added leg (fee goes here)
+		int LegCount;		// number of legs absorbed
+		double SumTotal;	// accumulated |Total Amount|
+		double SumGross;	// accumulated |Quantity| * Price
+		long DayNum;		// day number of the group's opening date
 	};
 
 	enum SubmitResult { NOT_CONSUMED, CONSUMED, CLOSED, QUIT };
 
 	auto groupFee = [](const Group& g) -> double
 	{
-		if (g.direction[0] == 'S')
-			return g.sumGross - g.sumTotal;
-		return g.sumTotal - g.sumGross;
+		if (g.Direction[0] == 'S')
+			return g.SumGross - g.SumTotal;
+		return g.SumTotal - g.SumGross;
 	};
 
-	auto feeInRange = [](double fee) -> bool
+	auto feeInRange = [&](double fee) -> bool
 	{
-		return (fee >= -1.0) && (fee <= BMO2SS::FeeThreshold);
+		return (fee >= -1.0) && (fee <= feeThreshold);
 	};
 
 	auto placeFee = [&](Group& g)
 	{
 		double fee = std::round(groupFee(g) * 100.0) / 100.0;
 		if (fee > 0.005)
-			legs[g.lastLegIndex].brokerage = tsrPrintf("%.2f", fee);
+			legs[g.LastLegIndex].Brokerage = tsrPrintf("%.2f", fee);
 	};
 
 	auto removeGroup = [](Group* groups, int idx, int& numGroups)
 	{
-		for (int j = idx; j < numGroups - 1; ++j)
+		for (int j = idx; j < numGroups - 1; j++)
 			groups[j] = groups[j + 1];
-		--numGroups;
+		numGroups--;
 	};
 
 	const int maxGroups = 64;
@@ -1087,32 +717,32 @@ bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs)
 
 	// Verify the data is in reverse-chronological order (newest first in the array).
 	// We process from oldest to newest, so the array must be non-increasing by date.
-	for (int i = 0; i < numLegs - 1; ++i)
+	for (int i = 0; i < numLegs - 1; i++)
 	{
-		if (DateToDayNum(legs[i].tradeDate) < DateToDayNum(legs[i + 1].tradeDate))
+		if (DateToDayNum(legs[i].TradeDate) < DateToDayNum(legs[i + 1].TradeDate))
 		{
 			tPrintf("Error: transactions are not in chronological order.\n");
 			tPrintf("Row %d (%s) is older than row %d (%s).\n",
-				i + 1, legs[i].tradeDate.Chr(), i + 2, legs[i + 1].tradeDate.Chr());
+				i + 1, legs[i].TradeDate.Chr(), i + 2, legs[i + 1].TradeDate.Chr());
 			tPrintf("The exported data must be sorted newest-first.\n");
 			return false;
 		}
 	}
 
 	// Process from oldest to newest (legs[] is newest-first, so iterate in reverse).
-	for (int i = numLegs - 1; i >= 0; --i)
+	for (int i = numLegs - 1; i >= 0; i--)
 	{
 		const TradeLeg& leg = legs[i];
-		long dayNum = DateToDayNum(leg.tradeDate);
-		tString ticker = leg.symbol;
+		long dayNum = DateToDayNum(leg.TradeDate);
+		tString ticker = leg.Symbol;
 		ticker.ToUpper();
-		tString cur = leg.currency;
+		tString cur = leg.Currency;
 		cur.ToUpper();
 
 		bool consumed = false;
-		for (int g = 0; g < numGroups; ++g)
+		for (int g = 0; g < numGroups; g++)
 		{
-			long span = dayNum - groups[g].dayNum;
+			long span = dayNum - groups[g].DayNum;
 			if (span < 0) span = -span;
 			double fee = groupFee(groups[g]);
 
@@ -1121,38 +751,38 @@ bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs)
 			{
 				placeFee(groups[g]);
 				removeGroup(groups, g, numGroups);
-				--g;
+				g--;
 				continue;
 			}
 
 			// Exceeded the max lookahead: must close (do NOT consume).
-			if (span > (long)BMO2SS::MaxLookaheadDays)
+			if (span > (long)maxLookaheadDays)
 			{
 				if (feeInRange(fee))
 				{
 					placeFee(groups[g]);
 					removeGroup(groups, g, numGroups);
-					--g;
+					g--;
 					continue;
 				}
 				if (!CanPromptForMarket())
 				{
 					tPrintf("Non-interactive: %s %s group exceeded %d days; fee set to zero.\n",
-						groups[g].direction, groups[g].ticker.Chr(), BMO2SS::MaxLookaheadDays);
+						groups[g].Direction, groups[g].Ticker.Chr(), maxLookaheadDays);
 					removeGroup(groups, g, numGroups);
-					--g;
+					g--;
 					continue;
 				}
 				tPrintf("Group %s %s (row %d, %d legs) exceeded the %d-day lookahead with an out-of-range fee.\n",
-					groups[g].direction, groups[g].ticker.Chr(),
-					groups[g].lastLegIndex + 1, groups[g].legCount, BMO2SS::MaxLookaheadDays);
+					groups[g].Direction, groups[g].Ticker.Chr(),
+					groups[g].LastLegIndex + 1, groups[g].LegCount, maxLookaheadDays);
 				tPrintf("Set the fee to zero, or quit? [z/Q]: ");
 				fflush(stdout);
 				char buf[32];
 				if (!fgets(buf, (int)sizeof(buf), stdin))
 				{
 					removeGroup(groups, g, numGroups);
-					--g;
+					g--;
 					continue;
 				}
 				tString choice = buf;
@@ -1163,19 +793,19 @@ bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs)
 					return false;
 				}
 				removeGroup(groups, g, numGroups);
-				--g;
+				g--;
 				continue;
 			}
 
 			// Within window, fee not yet in range: check if this transaction matches.
-			if (groups[g].ticker.IsEqualCI(ticker) &&
-				groups[g].direction == leg.transactionType &&
-				groups[g].currency.IsEqualCI(cur))
+			if (groups[g].Ticker.IsEqualCI(ticker) &&
+				groups[g].Direction == leg.TransactionType &&
+				groups[g].Currency.IsEqualCI(cur))
 			{
-				groups[g].sumTotal += leg.totalAbs;
-				groups[g].sumGross += leg.gross;
-				groups[g].lastLegIndex = i;
-				groups[g].legCount++;
+				groups[g].SumTotal += leg.TotalAbs;
+				groups[g].SumGross += leg.Gross;
+				groups[g].LastLegIndex = i;
+				groups[g].LegCount++;
 				consumed = true;
 				break;
 			}
@@ -1189,19 +819,19 @@ bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs)
 				continue;
 			}
 			Group& g = groups[numGroups++];
-			g.ticker = ticker;
-			g.direction = leg.transactionType;
-			g.currency = cur;
-			g.lastLegIndex = i;
-			g.legCount = 1;
-			g.sumTotal = leg.totalAbs;
-			g.sumGross = leg.gross;
-			g.dayNum = dayNum;
+			g.Ticker = ticker;
+			g.Direction = leg.TransactionType;
+			g.Currency = cur;
+			g.LastLegIndex = i;
+			g.LegCount = 1;
+			g.SumTotal = leg.TotalAbs;
+			g.SumGross = leg.Gross;
+			g.DayNum = dayNum;
 		}
 	}
 
 	// Final sweep: close any remaining groups.
-	for (int g = 0; g < numGroups; ++g)
+	for (int g = 0; g < numGroups; g++)
 	{
 		double fee = groupFee(groups[g]);
 		if (feeInRange(fee))
@@ -1211,8 +841,8 @@ bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs)
 		else
 		{
 			tPrintf("Warning: %s %s group (row %d, %d legs) has an out-of-range fee.\n",
-				groups[g].direction, groups[g].ticker.Chr(),
-				groups[g].lastLegIndex + 1, groups[g].legCount);
+				groups[g].Direction, groups[g].Ticker.Chr(),
+				groups[g].LastLegIndex + 1, groups[g].LegCount);
 			if (!CanPromptForMarket())
 			{
 				tPrintf("Non-interactive: fee set to zero.\n");
@@ -1311,14 +941,27 @@ int main(int argc, char** argv)
 		}
 	}
 
-	// Config: market codes (per ticker, or per ticker+currency), ignored tickers, and kept (reviewed) tickers,
-	// remembered in a file next to the executable (tScript s-expr format). Market codes are added when the user
-	// answers the prompt for a pair that is not recorded yet; ignored/kept tickers are recorded when the user
-	// answers the Norbert's Gambit prompt.
-	tList<BMO2SS::MarketEntry> marketMap;
-	tList<tStringItem> ignoreList;
-	tList<tStringItem> reviewedList;
-	BMO2SS::LoadConfig(marketMap, ignoreList, reviewedList);
+	// Config: market codes (per ticker, or per ticker+currency), the fee-grouping options, ignored tickers, and kept
+	// (reviewed) tickers -- all in a single object loaded from the file next to the executable (tScript s-expr format).
+	// Market codes are added when the user answers the prompt for a pair that is not recorded yet; ignored/kept tickers
+	// are recorded when the user answers the Norbert's Gambit prompt.
+	BMO2SS::Configuration config;
+	config.Load(BMO2SS::ConfigFile());
+
+	// The run records market codes and ignored/reviewed tickers as it goes. Persist whatever was learned on every
+	// exit path (a successful run or any of the early "return 1" below) rather than saving piecemeal during the
+	// prompts: this guard saves once, on scope exit, and covers each early return above it.
+	struct SaveConfigOnScopeExit
+	{
+		const BMO2SS::Configuration& config;
+		const tString&              filename;
+
+		~SaveConfigOnScopeExit()
+		{
+			if (!config.Save(filename))
+				tPrintf("Warning: could not save the config file.\n");
+		}
+	} saveConfigOnExit{ config, BMO2SS::ConfigFile() };
 
 	// Load the Investorline export.
 	tSystem::tCSV input;
@@ -1338,7 +981,7 @@ int main(int argc, char** argv)
 
 	// Find the header row (defensively; the Investorline format has the header on the second line).
 	int headerRow = -1;
-	for (int row = 0; row < numRows; ++row)
+	for (int row = 0; row < numRows; row++)
 	{
 		if (input.Get(row, 0) == "Transaction Date")
 		{
@@ -1354,7 +997,7 @@ int main(int argc, char** argv)
 		tPrintf("assuming the first line.\n");
 	}
 
-	// ---- Prepare the output document with the ShareSight bulk-trades header.
+	// Prepare the output document with the ShareSight bulk-trades header.
 	tSystem::tCSV output;
 	{
 		tList<tStringItem> header;
@@ -1391,7 +1034,7 @@ int main(int argc, char** argv)
 	int numLegs = 0;
 	int capLegs = 0;
 
-	for (int row = headerRow + 1; row < numRows; ++row)
+	for (int row = headerRow + 1; row < numRows; row++)
 	{
 		tString tradeDate = input.Get(row, 0);
 		tradeDate.Trim();
@@ -1439,7 +1082,7 @@ int main(int argc, char** argv)
 		}
 
 		// Tickers on the ignore list (eg. Norbert's Gambit vehicles) are dropped entirely.
-		if (BMO2SS::IsIgnored(symbol, ignoreList))
+		if (BMO2SS::IsIgnored(symbol, config.Ignored))
 		{
 			ignoredRows++;
 			continue;
@@ -1492,46 +1135,46 @@ int main(int argc, char** argv)
 		// Construct the leg in place (the array is raw realloc'd memory, not yet constructed).
 		BMO2SS::TradeLeg* newLeg = new (&legs[numLegs]) BMO2SS::TradeLeg();
 		BMO2SS::TradeLeg& leg = *newLeg;
-		leg.inRow = row + 1;
-		leg.tradeDate = tradeDate;
-		leg.settleDate = settleDate;
-		leg.symbol = symbol;
-		leg.currency = currency;
-		leg.quantity = quantity;
-		leg.price = price;
-		leg.transactionType = transactionType;
-		leg.totalAbs = totalAbs;
-		leg.zeroTotal = (leg.totalAbs <= 0.005);
-		leg.gross = quantity.GetAsDouble() * price.GetAsDouble();
-		if (leg.gross < 0.0)
-			leg.gross = -leg.gross;
+		leg.InRow = row + 1;
+		leg.TradeDate = tradeDate;
+		leg.SettleDate = settleDate;
+		leg.Symbol = symbol;
+		leg.Currency = currency;
+		leg.Quantity = quantity;
+		leg.Price = price;
+		leg.TransactionType = transactionType;
+		leg.TotalAbs = totalAbs;
+		leg.ZeroTotal = (leg.TotalAbs <= 0.005);
+		leg.Gross = quantity.GetAsDouble() * price.GetAsDouble();
+		if (leg.Gross < 0.0)
+			leg.Gross = -leg.Gross;
 
 		numLegs++;
 		converted++;
 	}
 
-	// ---- Norbert's Gambit: detect symbols bought in one currency and sold in another on the same day with
+	// Norbert's Gambit: detect symbols bought in one currency and sold in another on the same day with
 	// matching share counts, and ask whether to drop them. A "keep" is recorded so the same ticker is not asked
 	// again. This runs before the market-code prompts so a dropped symbol is not asked about.
 	{
 		tList<BMO2SS::NorbertSuspect> suspects;
-		BMO2SS::FindNorbertSuspects(legs, numLegs, ignoreList, reviewedList, suspects);
-		BMO2SS::PromptForNorbert(marketMap, ignoreList, reviewedList, suspects);
+		BMO2SS::FindNorbertSuspects(legs, numLegs, config.Ignored, config.Reviewed, suspects);
+		BMO2SS::PromptForNorbert(config.Ignored, config.Reviewed, suspects);
 	}
 
-	// ---- Market codes: one per (ticker, currency) pair, recorded in the config file. Ask once per
+	// Market codes: one per (ticker, currency) pair, recorded in the config file. Ask once per
 	// pair that is not recorded yet; each answer is saved to the config file for future runs.
 	for (int i = 0; i < numLegs; i++)
 	{
 		const BMO2SS::TradeLeg& leg = legs[i];
-		if (BMO2SS::IsIgnored(leg.symbol, ignoreList))
+		if (BMO2SS::IsIgnored(leg.Symbol, config.Ignored))
 			continue;
-		if (!BMO2SS::MarketCodeFor(marketMap, leg.symbol, leg.currency).IsEmpty())
+		if (!BMO2SS::MarketCodeFor(config.Markets, leg.Symbol, leg.Currency).IsEmpty())
 			continue;
 
-		tString pair = leg.symbol;
-		if (!leg.currency.IsEmpty())
-			pair += tsrPrintf(" (%s)", leg.currency.Chr());
+		tString pair = leg.Symbol;
+		if (!leg.Currency.IsEmpty())
+			pair += tsrPrintf(" (%s)", leg.Currency.Chr());
 
 		if (!BMO2SS::CanPromptForMarket())
 		{
@@ -1545,7 +1188,7 @@ int main(int argc, char** argv)
 			return 1;
 		}
 
-		if (!BMO2SS::PromptForMarket(marketMap, ignoreList, reviewedList, leg.symbol, leg.currency))
+		if (!BMO2SS::PromptForMarket(config.Markets, leg.Symbol, leg.Currency))
 		{
 			tPrintf("Error: aborted -- the output would carry %s rows without a Market Code.\n", pair.Chr());
 			return 1;
@@ -1553,7 +1196,7 @@ int main(int argc, char** argv)
 	}
 
 	// Compute the fees (grouping multi-leg orders), then write the rows back in input order.
-	if (!BMO2SS::ComputeBrokerages(legs, numLegs))
+	if (!BMO2SS::ComputeBrokerages(legs, numLegs, config.FeeThreshold, config.MaxLookaheadDays))
 	{
 		BMO2SS::FreeLegs(legs, numLegs);
 		return 1;
@@ -1569,28 +1212,28 @@ int main(int argc, char** argv)
 
 		// A ticker the user just chose to ignore (a detected Norbert's Gambit) was collected before the prompt;
 		// drop it from the output now.
-		if (BMO2SS::IsIgnored(leg.symbol, ignoreList))
+		if (BMO2SS::IsIgnored(leg.Symbol, config.Ignored))
 		{
 			droppedNorbert++;
 			continue;
 		}
 
 		tList<tStringItem> outRowCells;
-		outRowCells.Append(new tStringItem(leg.tradeDate));
-		outRowCells.Append(new tStringItem(leg.symbol));
-		tString market = BMO2SS::MarketCodeFor(marketMap, leg.symbol, leg.currency);
+		outRowCells.Append(new tStringItem(leg.TradeDate));
+		outRowCells.Append(new tStringItem(leg.Symbol));
+		tString market = BMO2SS::MarketCodeFor(config.Markets, leg.Symbol, leg.Currency);
 		if (market.IsEmpty())
 			tPrintf
 			(
 				"Warning: Row %d: no market code for %s; the Market Code cell is left blank.\n",
-				leg.inRow, leg.symbol.Chr()
+				leg.InRow, leg.Symbol.Chr()
 			);
 		outRowCells.Append(new tStringItem(market));
-		outRowCells.Append(new tStringItem(leg.quantity));
-		outRowCells.Append(new tStringItem(leg.price));
-		outRowCells.Append(new tStringItem(leg.transactionType));
+		outRowCells.Append(new tStringItem(leg.Quantity));
+		outRowCells.Append(new tStringItem(leg.Price));
+		outRowCells.Append(new tStringItem(leg.TransactionType));
 		outRowCells.Append(new tStringItem());	// Exchange Rate
-		outRowCells.Append(new tStringItem(leg.brokerage));
+		outRowCells.Append(new tStringItem(leg.Brokerage));
 		outRowCells.Append(new tStringItem());	// Brokerage Currency
 		outRowCells.Append(new tStringItem());	// Comments
 
@@ -1620,9 +1263,6 @@ int main(int argc, char** argv)
 		tPrintf("%s\n", outputFile.Chr());
 		return 1;
 	}
-
-	// Persist the config file (markets, ignored/reviewed tickers, and fee thresholds).
-	BMO2SS::SaveConfig(marketMap, ignoreList, reviewedList);
 
 	tPrintf("Input   : %s\n", inputFile.Chr());
 	tPrintf("Output  : %s\n", outputFile.Chr());
