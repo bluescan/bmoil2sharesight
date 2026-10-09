@@ -1,5 +1,5 @@
 # bmoil2sharesight
-BmoIL2ShareSight is a small command-line tool to convert Investorline CSV files to a format ShareSight can understand. Handles multi-leg trades properly.
+BmoIL2ShareSight is a small command-line tool to convert Investorline CSV files to a format ShareSight can understand. Handles multi-leg trades by grouping them together to avoid negative fees.
 
 ## Introduction
 
