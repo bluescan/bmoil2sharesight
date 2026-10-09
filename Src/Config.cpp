@@ -66,19 +66,20 @@ void BMO2SS::Configuration::Load(const tString& filename)
 						if (n < 2)
 							continue;
 
+						// mic is a direct s-expr atom, so the parser has already stripped surrounding whitespace (no Trim
+						// needed); and MarketCodeFromMIC matches with IsEqualCI, so no ToUpper is needed either.
 						tString mic = e.ItemN(n - 1);
-						mic.Trim().ToUpper();
 						if (mic.IsEmpty())
 							continue;
 
 						// The leading atom is always "TICKER:CURR"; a bare ticker (no currency) is skipped.
+						// No Trim/ToUpper on the parts: tScript atoms are space-delimited, so a hand-edited "TICKER : CURR" with spaces would need quotes to stay a single atom -- we assume well-formed atoms; MarketCodeFor matches case-insensitively.
 						tList<tStringItem> parts;
 						if (tStd::tExplode(parts, e.Item0(), ':') < 2)
 							continue;
+
 						tString ticker	= *parts.First();
 						tString cur		= *parts.Last();
-						ticker.Trim().ToUpper();
-						cur.Trim().ToUpper();
 						if (ticker.IsEmpty())
 							continue;
 
@@ -111,8 +112,9 @@ void BMO2SS::Configuration::Load(const tString& filename)
 					tList<tStringItem>& list = (block.Command().Hash() == tHash::tHashCT("Ignored")) ? Ignored : Reviewed;
 					for (tExpression e = block.Item1(); e.Valid(); e = e.Next())
 					{
+						// e is a direct s-expr atom (the parser already tokenised it), and IsIgnored/IsReviewed compare with
+						// IsEqualCI, so neither Trim nor ToUpper is needed here.
 						tString t = e;
-						t.Trim();
 						if (!t.IsEmpty())
 							list.Append(new tStringItem(t));
 					}
