@@ -54,14 +54,14 @@ namespace BMO2SS
 		// written.
 		bool Save(const tString& filename) const;
 
-		tList<MarketEntry>  Markets;          // [TICKER:CURR MIC] entries
-		double              FeeThreshold;     // maximum fee before a group must absorb more legs
-		int                 MaxLookaheadDays; // maximum day span before a group must close
-		tList<tStringItem>  Ignored;          // tickers dropped from the output
-		tList<tStringItem>  Reviewed;         // tickers kept (reviewed) after a Norbert's Gambit prompt
+		tList<MarketEntry>  Markets;			// [TICKER:CURR MIC] entries
+		double              FeeThreshold;		// maximum fee before a group must absorb more legs
+		int                 LookaheadDays;		// maximum day span before a group must close
+		tList<tStringItem>  Ignored;			// tickers dropped from the output
+		tList<tStringItem>  Reviewed;			// tickers kept (reviewed) after a Norbert's Gambit prompt
 
 	private:
 		static const double DefaultFeeThreshold;
-		static const int    DefaultMaxLookaheadDays;
+		static const int    DefaultLookaheadDays;
 	};
 }

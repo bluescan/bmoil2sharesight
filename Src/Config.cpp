@@ -14,20 +14,19 @@
 // PERFORMANCE OF THIS SOFTWARE.
 
 #include "Config.h"
-
 #include <Foundation/tString.h>
 #include <System/tFile.h>
 #include <System/tPrint.h>
 #include <System/tScript.h>
 
 
-const double BMO2SS::Configuration::DefaultFeeThreshold    = 100.0;
-const int    BMO2SS::Configuration::DefaultMaxLookaheadDays = 7;
+const double	BMO2SS::Configuration::DefaultFeeThreshold		= 100.0;
+const int		BMO2SS::Configuration::DefaultLookaheadDays		= 7;
 
 
-BMO2SS::Configuration::Configuration()
-	: FeeThreshold(DefaultFeeThreshold)
-	, MaxLookaheadDays(DefaultMaxLookaheadDays)
+BMO2SS::Configuration::Configuration() :
+	FeeThreshold(DefaultFeeThreshold),
+	LookaheadDays(DefaultLookaheadDays)
 {
 }
 
@@ -39,12 +38,12 @@ void BMO2SS::Configuration::Load(const tString& filename)
 	Markets.Clear();
 	Ignored.Clear();
 	Reviewed.Clear();
-	FeeThreshold     = DefaultFeeThreshold;
-	MaxLookaheadDays = DefaultMaxLookaheadDays;
+	FeeThreshold	= DefaultFeeThreshold;
+	LookaheadDays	= DefaultLookaheadDays;
 
 	tString text;
 	if (!tSystem::tLoadFile(filename, text))
-		return;   // No file (or unreadable): keep the defaults.
+		return;		// No file (or unreadable): keep the defaults.
 
 	// A malformed config should not abort the run; tScript signals parse errors by throwing, so swallow them and keep
 	// whatever parsed cleanly.
@@ -60,7 +59,7 @@ void BMO2SS::Configuration::Load(const tString& filename)
 			{
 				case tHash::tHashCT("Markets"):
 				{
-					// Each entry is [TICKER:CURR MIC]; every entry records a currency.
+					// Each entry is [TICKER:CURR MIC]
 					for (tExpression e = block.Item1(); e.Valid(); e = e.Next())
 					{
 						int n = e.CountItems();
@@ -76,34 +75,36 @@ void BMO2SS::Configuration::Load(const tString& filename)
 						tList<tStringItem> parts;
 						if (tStd::tExplode(parts, e.Item0(), ':') < 2)
 							continue;
-						tString ticker = *parts.First();
-						tString cur    = *parts.Last();
+						tString ticker	= *parts.First();
+						tString cur		= *parts.Last();
 						ticker.Trim().ToUpper();
 						cur.Trim().ToUpper();
 						if (ticker.IsEmpty())
 							continue;
 
 						MarketEntry* entry = new MarketEntry();
-						entry->Ticker   = ticker;
-						entry->Currency = cur;
-						entry->Mic      = mic;
+						entry->Ticker	= ticker;
+						entry->Currency	= cur;
+						entry->Mic		= mic;
 						Markets.Append(entry);
 					}
 					break;
 				}
+
 				case tHash::tHashCT("Options"):
 				{
 					for (tExpression e = block.Item1(); e.Valid(); e = e.Next())
 					{
 						switch (e.Command().Hash())
 						{
-							case tHash::tHashCT("feeThreshold"):      FeeThreshold = e.Arg1(); break;
-							case tHash::tHashCT("maxLookaheadDays"):  MaxLookaheadDays = e.Arg1(); break;
+							case tHash::tHashCT("FeeThreshold"):	FeeThreshold	= e.Arg1(); break;
+							case tHash::tHashCT("LookaheadDays"):	LookaheadDays	= e.Arg1(); break;
 							// Any other option is ignored (forward compatibility).
 						}
 					}
 					break;
 				}
+
 				case tHash::tHashCT("Ignored"):
 				case tHash::tHashCT("Reviewed"):
 				{
@@ -149,9 +150,8 @@ bool BMO2SS::Configuration::Save(const tString& filename) const
 		MarketEntry* last = Markets.Last();
 		for (MarketEntry* m = Markets.First(); m; m = m->Next())
 		{
-			tString key = m->Ticker;
-			key += ':';
-			key += m->Currency;
+			tString key = m->Ticker + ":" + m->Currency;
+
 			// Compose every entry but the last with a trailing newline (Comp), and the last without one (Coms), so
 			// there is no blank line before the closing "]".
 			if (m == last)
@@ -167,14 +167,14 @@ bool BMO2SS::Configuration::Save(const tString& filename) const
 	// Blank line, then the Options section (always written).
 	writer.CR();
 	writer.Rem("Options");
-	writer.Rem("feeThreshold: maximum fee (in trade currency) before a group must absorb more legs.");
-	writer.Rem("maxLookaheadDays: maximum day span for a group before it must close.");
+	writer.Rem("FeeThreshold  : Max fee (in trade currency) before a group must absorb more legs.");
+	writer.Rem("LookaheadDays : Max day span for a group before it must close.");
 	writer.Begin();
 	writer.Atom("Options");
 	writer.Indent();
 	writer.CR();
-	writer.Comp("feeThreshold", tsrPrintf("%g", FeeThreshold));
-	writer.Coms("maxLookaheadDays", tsrPrintf("%d", MaxLookaheadDays));
+	writer.Comp("FeeThreshold", tsrPrintf("%g", FeeThreshold));
+	writer.Coms("LookaheadDays", tsrPrintf("%d", LookaheadDays));
 	writer.Dedent();
 	writer.CR();
 	writer.End();

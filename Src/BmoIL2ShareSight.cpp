@@ -38,7 +38,7 @@
 //   BUY : fee = sum(|Total Amount|) - sum(|Quantity| * Price)
 //   SELL: fee = sum(|Quantity| * Price) - sum(|Total Amount|)
 //
-// FeeThreshold and MaxLookaheadDays are read from (and written to) the config file after each run.
+// FeeThreshold and LookaheadDays are read from (and written to) the config file after each run.
 //
 // Ignored tickers (eg. Norbert's Gambit vehicles): a symbol dropped from the output is recorded in an "Ignored" list in
 // the bmoil2sharesight.cfg config file (next to the executable, alongside the market codes) so it is remembered for
@@ -182,7 +182,7 @@ namespace BMO2SS
 	{
 		tString Symbol;
 		tString Currency;
-		unsigned long Count;
+		int Count;
 	};
 
 	// A symbol suspected of Norbert's Gambit: on at least one day its total Buy quantity in one currency equals
@@ -192,7 +192,7 @@ namespace BMO2SS
 	{
 		tString Symbol;
 		tList<tStringItem> Currencies;
-		unsigned long TotalRows;   // buy/sell rows for this symbol (across all its currencies/days)
+		int TotalRows;   // buy/sell rows for this symbol (across all its currencies/days)
 	};
 
 	// Detect Norbert's Gambit: symbols bought in one currency and sold in another on the same day with matching
@@ -216,10 +216,10 @@ namespace BMO2SS
 	void FreeLegs(TradeLeg* legs, int numLegs);
 
 	// Convert an ISO date string ("YYYY-MM-DD") to a day number for comparison.
-	long DateToDayNum(const tString& date);
+	int DateToDayNum(const tString& date);
 
 	// Compute the brokerage for every leg (see the file header for the algorithm).
-	bool ComputeBrokerages(TradeLeg* legs, int numLegs, double feeThreshold, int maxLookaheadDays);
+	bool ComputeBrokerages(TradeLeg* legs, int numLegs, double feeThreshold, int lookaheadDays);
 }
 
 
@@ -402,7 +402,7 @@ void BMO2SS::FindNorbertSuspects
 		// Record the suspect: the symbol, every currency it traded in, and its total number of buy/sell rows.
 		NorbertSuspect* sus = new NorbertSuspect();
 		sus->Symbol = p->Symbol;
-		unsigned long total = 0;
+		int total = 0;
 		for (PairCount* pc = pairs.First(); pc; pc = pc->Next())
 		{
 			if (pc->Symbol.IsEqualCI(p->Symbol))
@@ -647,7 +647,7 @@ void BMO2SS::FreeLegs(TradeLeg* legs, int numLegs)
 }
 
 
-long BMO2SS::DateToDayNum(const tString& date)
+int BMO2SS::DateToDayNum(const tString& date)
 {
 	// Parse "YYYY-MM-DD" into a Julian Day Number for arithmetic comparison.
 	int year = 0, month = 0, day = 0;
@@ -656,7 +656,7 @@ long BMO2SS::DateToDayNum(const tString& date)
 	int a = (14 - month) / 12;
 	int y = year + 4800 - a;
 	int m = month + 12 * a - 3;
-	return day + (153L * m + 2) / 5 + 365L * y + y / 4 - y / 100 + y / 400 - 32045;
+	return day + (153 * m + 2) / 5 + 365 * y + y / 4 - y / 100 + y / 400 - 32045;
 }
 
 
@@ -669,7 +669,7 @@ long BMO2SS::DateToDayNum(const tString& date)
 // If no group consumes the transaction, a new group is opened for it.
 //
 // Returns true on success; false if the user chose to quit.
-bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs, double feeThreshold, int maxLookaheadDays)
+bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs, double feeThreshold, int lookaheadDays)
 {
 	struct Group
 	{
@@ -680,7 +680,7 @@ bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs, double feeThreshold,
 		int LegCount;		// number of legs absorbed
 		double SumTotal;	// accumulated |Total Amount|
 		double SumGross;	// accumulated |Quantity| * Price
-		long DayNum;		// day number of the group's opening date
+		int DayNum;			// day number of the group's opening date
 	};
 
 	enum SubmitResult { NOT_CONSUMED, CONSUMED, CLOSED, QUIT };
@@ -733,7 +733,7 @@ bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs, double feeThreshold,
 	for (int i = numLegs - 1; i >= 0; i--)
 	{
 		const TradeLeg& leg = legs[i];
-		long dayNum = DateToDayNum(leg.TradeDate);
+		int dayNum = DateToDayNum(leg.TradeDate);
 		tString ticker = leg.Symbol;
 		ticker.ToUpper();
 		tString cur = leg.Currency;
@@ -742,7 +742,7 @@ bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs, double feeThreshold,
 		bool consumed = false;
 		for (int g = 0; g < numGroups; g++)
 		{
-			long span = dayNum - groups[g].DayNum;
+			int span = dayNum - groups[g].DayNum;
 			if (span < 0) span = -span;
 			double fee = groupFee(groups[g]);
 
@@ -756,7 +756,7 @@ bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs, double feeThreshold,
 			}
 
 			// Exceeded the max lookahead: must close (do NOT consume).
-			if (span > (long)maxLookaheadDays)
+			if (span > lookaheadDays)
 			{
 				if (feeInRange(fee))
 				{
@@ -768,14 +768,14 @@ bool BMO2SS::ComputeBrokerages(TradeLeg* legs, int numLegs, double feeThreshold,
 				if (!CanPromptForMarket())
 				{
 					tPrintf("Non-interactive: %s %s group exceeded %d days; fee set to zero.\n",
-						groups[g].Direction, groups[g].Ticker.Chr(), maxLookaheadDays);
+						groups[g].Direction, groups[g].Ticker.Chr(), lookaheadDays);
 					removeGroup(groups, g, numGroups);
 					g--;
 					continue;
 				}
 				tPrintf("Group %s %s (row %d, %d legs) exceeded the %d-day lookahead with an out-of-range fee.\n",
 					groups[g].Direction, groups[g].Ticker.Chr(),
-					groups[g].LastLegIndex + 1, groups[g].LegCount, maxLookaheadDays);
+					groups[g].LastLegIndex + 1, groups[g].LegCount, lookaheadDays);
 				tPrintf("Set the fee to zero, or quit? [z/Q]: ");
 				fflush(stdout);
 				char buf[32];
@@ -1196,7 +1196,7 @@ int main(int argc, char** argv)
 	}
 
 	// Compute the fees (grouping multi-leg orders), then write the rows back in input order.
-	if (!BMO2SS::ComputeBrokerages(legs, numLegs, config.FeeThreshold, config.MaxLookaheadDays))
+	if (!BMO2SS::ComputeBrokerages(legs, numLegs, config.FeeThreshold, config.LookaheadDays))
 	{
 		BMO2SS::FreeLegs(legs, numLegs);
 		return 1;
