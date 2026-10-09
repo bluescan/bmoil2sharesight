@@ -121,7 +121,7 @@ namespace BMO2SS
 
 	// One trade -- a single row (a fill) of the input -- kept in input order. Several trades of the same
 	// ticker, direction and currency can belong to one order; the fee is computed over the whole order.
-	struct Trade
+	struct Trade : tLink<Trade>
 	{
 		int InRow;						// 1-based row in the input file (for warnings)
 		tString TradeDate;
@@ -201,7 +201,7 @@ namespace BMO2SS
 	// matching day), in first-seen order.
 	void FindNorbertSuspects
 	(
-		const Trade* trades, int numTrades, tList<tStringItem>& ignored,
+		const tList<Trade>& trades, tList<tStringItem>& ignored,
 		tList<tStringItem>& reviewed, tList<NorbertSuspect>& suspects
 	);
 
@@ -213,14 +213,109 @@ namespace BMO2SS
 		const tList<NorbertSuspect>& suspects
 	);
 
-	// The trades live in raw (realloc'd) memory; destruct the trades that were constructed in place, then free.
-	void FreeTrades(Trade* trades, int numTrades);
-
 	// Convert an ISO date string ("YYYY-MM-DD") to a day number for comparison.
 	int DateToDayNum(const tString& date);
 
 	// Compute the brokerage for every trade (see the file header for the algorithm).
-	bool ComputeBrokerages(Trade* trades, int numTrades, double feeThreshold, int lookaheadDays);
+	bool ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lookaheadDays);
+
+	// A reconstructed "order": NOT a real broker order and NOT a CSV row. It is a transient fee bucket the algorithm
+	// builds in memory, accumulating the trades that settle together until the fee "closes". It is never persisted; it
+	// exists only for the duration of ComputeBrokerages to work out the fee and the leg (the highest-|Total Amount|
+	// trade, ties -> last) that will carry it. Derives from tLink so it can live on a tList.
+	class Order : public tLink<Order>
+	{
+	public:
+		tString Ticker;       // upper-case symbol
+		tString Direction;    // "BUY" or "SELL"
+		tString Currency;     // upper-case currency
+		int DayNum;           // day number of the order's opening date
+		int TradeCount;       // number of legs absorbed
+		double SumTotal;      // running SUM of |Total Amount| (feeds Fee())
+		double SumGross;      // running SUM of |Quantity| * Price (feeds Fee())
+		double MaxTotal;      // running MAX of |Total Amount| (carrier selection)
+		Trade* FeeCarrier;    // the max-|Total Amount| leg (ties -> last) that will receive the fee
+		bool Closed;          // true once finalised (no longer absorbs trades)
+		bool Place;           // true when the fee is in range and non-zero (the projection pass writes it)
+		double PlacedFee;     // the rounded fee to place (meaningful only when Place is true)
+
+		// Set the identity from the first leg and accumulate it.
+		void Open(Trade& first)
+		{
+			Ticker = first.Symbol;
+			Ticker.ToUpper();
+			Direction = first.TransactionType;
+			Currency = first.Currency;
+			Currency.ToUpper();
+			DayNum = DateToDayNum(first.TradeDate);
+			TradeCount = 0;
+			SumTotal = 0.0;
+			SumGross = 0.0;
+			MaxTotal = -1.0;
+			FeeCarrier = nullptr;
+			Closed = false;
+			Place = false;
+			PlacedFee = 0.0;
+			Submit(first);
+		}
+
+		// Absorb one more leg: keep the running sums (fee) and the running max (carrier, ties -> last via >=).
+		void Submit(Trade& t)
+		{
+			SumTotal += t.TotalAbs;
+			SumGross += t.Gross;
+			TradeCount++;
+			if (t.TotalAbs >= MaxTotal)
+			{
+				FeeCarrier = &t;
+				MaxTotal = t.TotalAbs;
+			}
+		}
+
+		// True when this trade matches the order (same ticker, direction and currency).
+		bool CanConsume(const Trade& t) const
+		{
+			return Ticker.IsEqualCI(t.Symbol) &&
+			       Direction == t.TransactionType &&
+			       Currency.IsEqualCI(t.Currency);
+		}
+
+		// The order's brokerage fee (BUY: sumTotal - sumGross; SELL: sumGross - sumTotal).
+		double Fee() const
+		{
+			if (Direction[0] == 'S')
+				return SumGross - SumTotal;
+			return SumTotal - SumGross;
+		}
+
+		// True when the fee is within the acceptable band (approximately zero to feeThreshold).
+		bool InRange(double feeThreshold) const
+		{
+			return (Fee() >= -1.0) && (Fee() <= feeThreshold);
+		}
+
+		bool IsClosed() const
+		{
+			return Closed;
+		}
+
+		// Finalise the order (it will no longer absorb trades). When 'place' is true the fee is in range and we record
+		// it (blanking it if it rounds to ~0); otherwise the fee is left blank.
+		void Finalize(bool place, double feeThreshold)
+		{
+			Closed = true;
+			if (place && InRange(feeThreshold))
+			{
+				PlacedFee = std::round(Fee() * 100.0) / 100.0;
+				Place = (PlacedFee > 0.005);
+			}
+			else
+			{
+				Place = false;
+				PlacedFee = 0.0;
+			}
+		}
+	};
 }
 
 
@@ -291,25 +386,26 @@ bool BMO2SS::AddReviewed(tList<tStringItem>& reviewed, const tString& ticker)
 
 void BMO2SS::FindNorbertSuspects
 (
-	const Trade* trades, int numTrades, tList<tStringItem>& ignored,
+	const tList<Trade>& trades, tList<tStringItem>& ignored,
 	tList<tStringItem>& reviewed, tList<NorbertSuspect>& suspects
 )
 {
-	if (numTrades < 2)
+	// Need at least two trades before there is any (ticker, currency) pair to compare.
+	if (trades.Count() < 2)
 		return;
 
 	// First pass: collect the (ticker, currency) pairs present in the input, in the order first seen, and count the
 	// number of buy/sell rows for each. Tickers already on the ignore or kept lists are skipped (their rows are
 	// dropped -- or already accepted -- anyway, so there is nothing to offer).
 	tList<PairCount> pairs;
-	for (int i = 0; i < numTrades; i++)
+	for (const Trade* trade = trades.First(); trade; trade = trade->Next())
 	{
-		tString symbol = trades[i].Symbol;
+		tString symbol = trade->Symbol;
 		symbol.Trim().ToUpper();
 		if (symbol.IsEmpty() || IsIgnored(symbol, ignored) || IsReviewed(symbol, reviewed))
 			continue;
 
-		tString currency = trades[i].Currency;
+		tString currency = trade->Currency;
 		currency.Trim().ToUpper();
 		if (currency.IsEmpty())
 			continue;
@@ -360,31 +456,30 @@ void BMO2SS::FindNorbertSuspects
 
 			// Compare, day by day, the buy/sell share totals of the two currencies. Whole-share counts are compared
 			// with a small tolerance to absorb any floating-point rounding.
-			for (int i = 0; i < numTrades && !match; i++)
+			for (const Trade* trade = trades.First(); trade && !match; trade = trade->Next())
 			{
-				if (!trades[i].Symbol.IsEqualCI(p->Symbol))
+				if (!trade->Symbol.IsEqualCI(p->Symbol))
 					continue;
 
-				const tString date = trades[i].TradeDate;
+				const tString date = trade->TradeDate;
 
 				double pBuy = 0.0, pSell = 0.0, qBuy = 0.0, qSell = 0.0;
-				for (int j = 0; j < numTrades; j++)
+				for (const Trade* j = trades.First(); j; j = j->Next())
 				{
-					const Trade& trade = trades[j];
-					if (!trade.Symbol.IsEqualCI(p->Symbol) || !trade.TradeDate.IsEqualCI(date))
+					if (!j->Symbol.IsEqualCI(p->Symbol) || !j->TradeDate.IsEqualCI(date))
 						continue;
 
-					double qnt = trade.Quantity.GetAsDouble();
+					double qnt = j->Quantity.GetAsDouble();
 					if (qnt < 0.0)
 						qnt = -qnt;
 
-					const bool isP = trade.Currency.IsEqualCI(p->Currency);
-					const bool isQ = trade.Currency.IsEqualCI(q->Currency);
-					if (isP && trade.TransactionType[0] == 'B')
+					const bool isP = j->Currency.IsEqualCI(p->Currency);
+					const bool isQ = j->Currency.IsEqualCI(q->Currency);
+					if (isP && j->TransactionType[0] == 'B')
 						pBuy += qnt;
 					else if (isP)
 						pSell += qnt;
-					else if (isQ && trade.TransactionType[0] == 'B')
+					else if (isQ && j->TransactionType[0] == 'B')
 						qBuy += qnt;
 					else if (isQ)
 						qSell += qnt;
@@ -639,15 +734,6 @@ bool BMO2SS::PromptForMarket
 }
 
 
-void BMO2SS::FreeTrades(Trade* trades, int numTrades)
-{
-	for (int i = 0; i < numTrades; i++)
-		trades[i].~Trade();
-
-	free(trades);
-}
-
-
 int BMO2SS::DateToDayNum(const tString& date)
 {
 	// Parse "YYYY-MM-DD" into a Julian Day Number for arithmetic comparison.
@@ -670,124 +756,74 @@ int BMO2SS::DateToDayNum(const tString& date)
 // If no order consumes the transaction, a new order is opened for it.
 //
 // Returns true on success; false if the user chose to quit.
-bool BMO2SS::ComputeBrokerages(Trade* trades, int numTrades, double feeThreshold, int lookaheadDays)
+bool BMO2SS::ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lookaheadDays)
 {
-	// A reconstructed "order": it is NOT a real broker order and NOT a row in the input CSV. It is a transient
-	// fee bucket the algorithm builds up in memory, accumulating the trades that settle together until the fee
-	// "closes". It is never persisted (unlike a Trade, which is a real input/output row) -- it exists only for
-	// the duration of ComputeBrokerages, solely to work out the fee placed on the finalizing trade.
-	struct Order
+	// A tList of reconstructed orders. Open orders absorb matching trades; closed ones are kept (and skipped by
+	// the scan) so that a single projection pass at the end can write each placed fee onto its carrier leg.
+	tList<Order> orders;
+
+	// Verify the data is in reverse-chronological order (newest first in the list, which is the Append order).
+	// We process from oldest to newest, so the list must be non-increasing by date.
 	{
-		tString Ticker;		// upper-case symbol
-		tString Direction;	// "BUY" or "SELL"
-		tString Currency;	// upper-case currency
-		int LastTradeIndex;	// index into trades[] of the most recently added trade (fee goes here)
-		int TradeCount;		// number of trades absorbed
-		double SumTotal;	// accumulated |Total Amount|
-		double SumGross;	// accumulated |Quantity| * Price
-		int DayNum;			// day number of the order's opening date
-	};
-
-	enum SubmitResult { NOT_CONSUMED, CONSUMED, CLOSED, QUIT };
-
-	auto orderFee = [](const Order& o) -> double
-	{
-		if (o.Direction[0] == 'S')
-			return o.SumGross - o.SumTotal;
-		return o.SumTotal - o.SumGross;
-	};
-
-	auto feeInRange = [&](double fee) -> bool
-	{
-		return (fee >= -1.0) && (fee <= feeThreshold);
-	};
-
-	auto placeFee = [&](Order& o)
-	{
-		double fee = std::round(orderFee(o) * 100.0) / 100.0;
-		if (fee > 0.005)
-			trades[o.LastTradeIndex].Brokerage = tsrPrintf("%.2f", fee);
-	};
-
-	auto removeOrder = [](Order* orders, int idx, int& numOrders)
-	{
-		for (int j = idx; j < numOrders - 1; j++)
-			orders[j] = orders[j + 1];
-		numOrders--;
-	};
-
-	const int maxOrders = 64;
-	Order orders[maxOrders];
-	int numOrders = 0;
-
-	// Verify the data is in reverse-chronological order (newest first in the array).
-	// We process from oldest to newest, so the array must be non-increasing by date.
-	for (int i = 0; i < numTrades - 1; i++)
-	{
-		if (DateToDayNum(trades[i].TradeDate) < DateToDayNum(trades[i + 1].TradeDate))
+		const Trade* a = trades.First();
+		for (const Trade* b = (a ? a->Next() : nullptr); b; a = b, b = b->Next())
 		{
-			tPrintf("Error: transactions are not in chronological order.\n");
-			tPrintf("Row %d (%s) is older than row %d (%s).\n",
-				i + 1, trades[i].TradeDate.Chr(), i + 2, trades[i + 1].TradeDate.Chr());
-			tPrintf("The exported data must be sorted newest-first.\n");
-			return false;
+			if (DateToDayNum(a->TradeDate) < DateToDayNum(b->TradeDate))
+			{
+				tPrintf("Error: transactions are not in chronological order.\n");
+				tPrintf("Row %d (%s) is older than row %d (%s).\n",
+					a->InRow, a->TradeDate.Chr(), b->InRow, b->TradeDate.Chr());
+				tPrintf("The exported data must be sorted newest-first.\n");
+				return false;
+			}
 		}
 	}
 
-	// Process from oldest to newest (trades[] is newest-first, so iterate in reverse).
-	for (int i = numTrades - 1; i >= 0; i--)
+	// Process from oldest to newest (the list is newest-first, so iterate Last() -> Prev()).
+	for (Trade* trade = trades.Last(); trade; trade = trade->Prev())
 	{
-		const Trade& trade = trades[i];
-		int dayNum = DateToDayNum(trade.TradeDate);
-		tString ticker = trade.Symbol;
-		ticker.ToUpper();
-		tString cur = trade.Currency;
-		cur.ToUpper();
+		int dayNum = DateToDayNum(trade->TradeDate);
 
 		bool consumed = false;
-		for (int g = 0; g < numOrders; g++)
+		for (Order* order = orders.First(); order; order = order->Next())
 		{
-			int span = dayNum - orders[g].DayNum;
-			if (span < 0) span = -span;
-			double fee = orderFee(orders[g]);
+			if (order->IsClosed())
+				continue;
 
-			// If the date has advanced and the fee is valid, close (do NOT consume).
-			if (span > 0 && feeInRange(fee))
+			int span = dayNum - order->DayNum;
+			if (span < 0) span = -span;
+
+			// If the date has advanced and the fee is in range, close (do NOT consume).
+			if (span > 0 && order->InRange(feeThreshold))
 			{
-				placeFee(orders[g]);
-				removeOrder(orders, g, numOrders);
-				g--;
+				order->Finalize(true, feeThreshold);
 				continue;
 			}
 
 			// Exceeded the max lookahead: must close (do NOT consume).
 			if (span > lookaheadDays)
 			{
-				if (feeInRange(fee))
+				if (order->InRange(feeThreshold))
 				{
-					placeFee(orders[g]);
-					removeOrder(orders, g, numOrders);
-					g--;
+					order->Finalize(true, feeThreshold);
 					continue;
 				}
 				if (!CanPromptForMarket())
 				{
 					tPrintf("Non-interactive: %s %s order exceeded %d days; fee set to zero.\n",
-						orders[g].Direction, orders[g].Ticker.Chr(), lookaheadDays);
-					removeOrder(orders, g, numOrders);
-					g--;
+						order->Direction, order->Ticker.Chr(), lookaheadDays);
+					order->Finalize(false, feeThreshold);
 					continue;
 				}
 				tPrintf("Order %s %s (row %d, %d trades) exceeded the %d-day lookahead with an out-of-range fee.\n",
-					orders[g].Direction, orders[g].Ticker.Chr(),
-					orders[g].LastTradeIndex + 1, orders[g].TradeCount, lookaheadDays);
+					order->Direction, order->Ticker.Chr(),
+					(order->FeeCarrier ? order->FeeCarrier->InRow : 0), order->TradeCount, lookaheadDays);
 				tPrintf("Set the fee to zero, or quit? [z/Q]: ");
 				fflush(stdout);
 				char buf[32];
 				if (!fgets(buf, (int)sizeof(buf), stdin))
 				{
-					removeOrder(orders, g, numOrders);
-					g--;
+					order->Finalize(false, feeThreshold);
 					continue;
 				}
 				tString choice = buf;
@@ -797,20 +833,14 @@ bool BMO2SS::ComputeBrokerages(Trade* trades, int numTrades, double feeThreshold
 					tPrintf("Aborted: the output file was not written.\n");
 					return false;
 				}
-				removeOrder(orders, g, numOrders);
-				g--;
+				order->Finalize(false, feeThreshold);
 				continue;
 			}
 
-			// Within window, fee not yet in range: check if this transaction matches.
-			if (orders[g].Ticker.IsEqualCI(ticker) &&
-				orders[g].Direction == trade.TransactionType &&
-				orders[g].Currency.IsEqualCI(cur))
+			// Within window, fee not yet in range: check if this trade matches and can be absorbed.
+			if (order->CanConsume(*trade))
 			{
-				orders[g].SumTotal += trade.TotalAbs;
-				orders[g].SumGross += trade.Gross;
-				orders[g].LastTradeIndex = i;
-				orders[g].TradeCount++;
+				order->Submit(*trade);
 				consumed = true;
 				break;
 			}
@@ -818,46 +848,41 @@ bool BMO2SS::ComputeBrokerages(Trade* trades, int numTrades, double feeThreshold
 
 		if (!consumed)
 		{
-			if (numOrders >= maxOrders)
-			{
-				tPrintf("Warning: too many open orders; row %d treated as standalone.\n", i + 1);
-				continue;
-			}
-			Order& g = orders[numOrders++];
-			g.Ticker = ticker;
-			g.Direction = trade.TransactionType;
-			g.Currency = cur;
-			g.LastTradeIndex = i;
-			g.TradeCount = 1;
-			g.SumTotal = trade.TotalAbs;
-			g.SumGross = trade.Gross;
-			g.DayNum = dayNum;
+			Order* order = new Order();
+			orders.Append(order);
+			order->Open(*trade);
 		}
 	}
 
-	// Final sweep: close any remaining orders.
-	for (int g = 0; g < numOrders; g++)
+	// Final sweep: close any remaining open orders.
+	for (Order* order = orders.First(); order; order = order->Next())
 	{
-		double fee = orderFee(orders[g]);
-		if (feeInRange(fee))
+		if (order->IsClosed())
+			continue;
+
+		if (order->InRange(feeThreshold))
 		{
-			placeFee(orders[g]);
+			order->Finalize(true, feeThreshold);
 		}
 		else
 		{
 			tPrintf("Warning: %s %s order (row %d, %d trades) has an out-of-range fee.\n",
-				orders[g].Direction, orders[g].Ticker.Chr(),
-				orders[g].LastTradeIndex + 1, orders[g].TradeCount);
+				order->Direction, order->Ticker.Chr(),
+				(order->FeeCarrier ? order->FeeCarrier->InRow : 0), order->TradeCount);
 			if (!CanPromptForMarket())
 			{
 				tPrintf("Non-interactive: fee set to zero.\n");
+				order->Finalize(false, feeThreshold);
 				continue;
 			}
 			tPrintf("Set the fee to zero, or quit? [z/Q]: ");
 			fflush(stdout);
 			char buf[32];
 			if (!fgets(buf, (int)sizeof(buf), stdin))
+			{
+				order->Finalize(false, feeThreshold);
 				continue;
+			}
 			tString choice = buf;
 			choice.Trim();
 			if (choice.IsEqualCI("q"))
@@ -865,8 +890,16 @@ bool BMO2SS::ComputeBrokerages(Trade* trades, int numTrades, double feeThreshold
 				tPrintf("Aborted: the output file was not written.\n");
 				return false;
 			}
+			order->Finalize(false, feeThreshold);
 			tPrintf("Fee set to zero.\n");
 		}
+	}
+
+	// Projection pass: each placed fee is written onto its carrier leg (the highest |Total Amount| leg, ties -> last).
+	for (Order* order = orders.First(); order; order = order->Next())
+	{
+		if (order->Place && order->FeeCarrier)
+			order->FeeCarrier->Brokerage = tsrPrintf("%.2f", order->PlacedFee);
 	}
 
 	return true;
@@ -1035,9 +1068,8 @@ int main(int argc, char** argv)
 	int skipped = 0;
 	int ignoredRows = 0;
 
-	BMO2SS::Trade* trades = nullptr;
-	int numTrades = 0;
-	int capTrades = 0;
+	// The trades live on a tList (it owns the nodes, which are freed automatically when the list is destroyed).
+	tList<BMO2SS::Trade> trades;
 
 	for (int row = headerRow + 1; row < numRows; row++)
 	{
@@ -1122,23 +1154,9 @@ int main(int argc, char** argv)
 				totalAbs = -totalAbs;
 		}
 
-		if (numTrades == capTrades)
-		{
-			int newCap = (capTrades == 0) ? 64 : capTrades * 2;
-			BMO2SS::Trade* newTrades =
-				(BMO2SS::Trade*)realloc(trades, newCap * sizeof(BMO2SS::Trade));
-			if (!newTrades)
-			{
-				tPrintf("Error: Out of memory.\n");
-				BMO2SS::FreeTrades(trades, numTrades);
-				return 1;
-			}
-			trades = newTrades;
-			capTrades = newCap;
-		}
-
-		// Construct the trade in place (the array is raw realloc'd memory, not yet constructed).
-		BMO2SS::Trade* newTrade = new (&trades[numTrades]) BMO2SS::Trade();
+		// Append a new trade to the list (the tList owns the node and frees it on destruction).
+		BMO2SS::Trade* newTrade = new BMO2SS::Trade();
+		trades.Append(newTrade);
 		BMO2SS::Trade& trade = *newTrade;
 		trade.InRow = row + 1;
 		trade.TradeDate = tradeDate;
@@ -1154,7 +1172,6 @@ int main(int argc, char** argv)
 		if (trade.Gross < 0.0)
 			trade.Gross = -trade.Gross;
 
-		numTrades++;
 		converted++;
 	}
 
@@ -1163,23 +1180,22 @@ int main(int argc, char** argv)
 	// again. This runs before the market-code prompts so a dropped symbol is not asked about.
 	{
 		tList<BMO2SS::NorbertSuspect> suspects;
-		BMO2SS::FindNorbertSuspects(trades, numTrades, config.Ignored, config.Reviewed, suspects);
+		BMO2SS::FindNorbertSuspects(trades, config.Ignored, config.Reviewed, suspects);
 		BMO2SS::PromptForNorbert(config.Ignored, config.Reviewed, suspects);
 	}
 
 	// Market codes: one per (ticker, currency) pair, recorded in the config file. Ask once per
 	// pair that is not recorded yet; each answer is saved to the config file for future runs.
-	for (int i = 0; i < numTrades; i++)
+	for (const BMO2SS::Trade* trade = trades.First(); trade; trade = trade->Next())
 	{
-		const BMO2SS::Trade& trade = trades[i];
-		if (BMO2SS::IsIgnored(trade.Symbol, config.Ignored))
+		if (BMO2SS::IsIgnored(trade->Symbol, config.Ignored))
 			continue;
-		if (!BMO2SS::MarketCodeFor(config.Markets, trade.Symbol, trade.Currency).IsEmpty())
+		if (!BMO2SS::MarketCodeFor(config.Markets, trade->Symbol, trade->Currency).IsEmpty())
 			continue;
 
-		tString pair = trade.Symbol;
-		if (!trade.Currency.IsEmpty())
-			pair += tsrPrintf(" (%s)", trade.Currency.Chr());
+		tString pair = trade->Symbol;
+		if (!trade->Currency.IsEmpty())
+			pair += tsrPrintf(" (%s)", trade->Currency.Chr());
 
 		if (!BMO2SS::CanPromptForMarket())
 		{
@@ -1193,7 +1209,7 @@ int main(int argc, char** argv)
 			return 1;
 		}
 
-		if (!BMO2SS::PromptForMarket(config.Markets, trade.Symbol, trade.Currency))
+		if (!BMO2SS::PromptForMarket(config.Markets, trade->Symbol, trade->Currency))
 		{
 			tPrintf("Error: aborted -- the output would carry %s rows without a Market Code.\n", pair.Chr());
 			return 1;
@@ -1201,9 +1217,8 @@ int main(int argc, char** argv)
 	}
 
 	// Compute the fees (reconstructing multi-trade orders), then write the rows back in input order.
-	if (!BMO2SS::ComputeBrokerages(trades, numTrades, config.FeeThreshold, config.LookaheadDays))
+	if (!BMO2SS::ComputeBrokerages(trades, config.FeeThreshold, config.LookaheadDays))
 	{
-		BMO2SS::FreeTrades(trades, numTrades);
 		return 1;
 	}
 
@@ -1211,49 +1226,44 @@ int main(int argc, char** argv)
 	int written = 0;
 	int droppedNorbert = 0;
 
-	for (int i = 0; i < numTrades; i++)
+	for (const BMO2SS::Trade* trade = trades.First(); trade; trade = trade->Next())
 	{
-		const BMO2SS::Trade& trade = trades[i];
-
 		// A ticker the user just chose to ignore (a detected Norbert's Gambit) was collected before the prompt;
 		// drop it from the output now.
-		if (BMO2SS::IsIgnored(trade.Symbol, config.Ignored))
+		if (BMO2SS::IsIgnored(trade->Symbol, config.Ignored))
 		{
 			droppedNorbert++;
 			continue;
 		}
 
 		tList<tStringItem> outRowCells;
-		outRowCells.Append(new tStringItem(trade.TradeDate));
-		outRowCells.Append(new tStringItem(trade.Symbol));
-		tString market = BMO2SS::MarketCodeFor(config.Markets, trade.Symbol, trade.Currency);
+		outRowCells.Append(new tStringItem(trade->TradeDate));
+		outRowCells.Append(new tStringItem(trade->Symbol));
+		tString market = BMO2SS::MarketCodeFor(config.Markets, trade->Symbol, trade->Currency);
 		if (market.IsEmpty())
 			tPrintf
 			(
 				"Warning: Row %d: no market code for %s; the Market Code cell is left blank.\n",
-				trade.InRow, trade.Symbol.Chr()
+				trade->InRow, trade->Symbol.Chr()
 			);
 		outRowCells.Append(new tStringItem(market));
-		outRowCells.Append(new tStringItem(trade.Quantity));
-		outRowCells.Append(new tStringItem(trade.Price));
-		outRowCells.Append(new tStringItem(trade.TransactionType));
+		outRowCells.Append(new tStringItem(trade->Quantity));
+		outRowCells.Append(new tStringItem(trade->Price));
+		outRowCells.Append(new tStringItem(trade->TransactionType));
 		outRowCells.Append(new tStringItem());	// Exchange Rate
-		outRowCells.Append(new tStringItem(trade.Brokerage));
+		outRowCells.Append(new tStringItem(trade->Brokerage));
 		outRowCells.Append(new tStringItem());	// Brokerage Currency
 		outRowCells.Append(new tStringItem());	// Comments
 
 		if (!output.SetRow(outRowCells, outRow))
 		{
 			tPrintf("Error: Could not write row %d to the output document.\n", outRow);
-			BMO2SS::FreeTrades(trades, numTrades);
 			return 1;
 		}
 
 		outRow++;
 		written++;
 	}
-
-	BMO2SS::FreeTrades(trades, numTrades);
 
 	if (written == 0)
 	{
