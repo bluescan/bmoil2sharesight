@@ -19,8 +19,8 @@
 // bmoil2sharesight.cfg config file (next to the executable). The config file uses the tScript s-expr notation: a
 // "Markets" list of [TICKER:CURR MIC] entries. The MIC is a standard ISO 10383 market identifier
 // code (XNYS, ARCX, XNAS, XTSE, XTSX, NEOE); the matching ShareSight Market Code (NYSE, NASDAQ, TSX, TSXV, NEO) is what
-// gets saved in the output CSV. When a pair is not recorded, the tool lists the supported MICs and asks the user to pick
-// one by number, then saves the choice to the config file so it is not asked again.
+// gets saved in the output CSV. When a pair is not recorded, the tool lists the supported MICs and asks the user to
+// pick one by number, then saves the choice to the config file so it is not asked again.
 //
 // Brokerage fees: a single order may be split across several trades (rows) that share ticker, direction and price
 // currency -- limit-order fills can settle at slightly different prices over one or more days, and one or more trades
@@ -67,6 +67,7 @@
 #endif
 #include <cstdlib>
 #include <cstring>
+#include <Foundation/tHash.h>
 #include <Foundation/tString.h>
 #include <System/tCSV.h>
 #include <System/tCmdLine.h>
@@ -275,9 +276,9 @@ namespace BMO2SS
 		// True when this trade matches the order (same ticker, direction and currency).
 		bool CanConsume(const Trade& t) const
 		{
-			return Ticker.IsEqualCI(t.Symbol) &&
-			       Direction == t.TransactionType &&
-			       Currency.IsEqualCI(t.Currency);
+			return	Ticker.IsEqualCI(t.Symbol) &&
+					Direction == t.TransactionType &&
+					Currency.IsEqualCI(t.Currency);
 		}
 
 		// The order's brokerage fee (BUY: sumTotal - sumGross; SELL: sumGross - sumTotal).
@@ -285,6 +286,7 @@ namespace BMO2SS
 		{
 			if (Direction[0] == 'S')
 				return SumGross - SumTotal;
+
 			return SumTotal - SumGross;
 		}
 
@@ -588,21 +590,24 @@ void BMO2SS::PromptForNorbert
 tString BMO2SS::MarketCodeFromMIC(const tString& mic)
 {
 	tString code = mic;
-	code.Trim();
+	code.Trim().ToUpper();
 
 	// The mapping follows the "Market Identifier Code (MIC) to Sharesight's Market Code" table in Data/Readme.txt.
-	if (code.IsEqualCI("XTSE"))
-		return "TSX";
-	if (code.IsEqualCI("XTSX"))
-		return "TSXV";
-	if (code.IsEqualCI("NEOE"))
-		return "NEO";
-	if (code.IsEqualCI("XNAS"))
-		return "NASDAQ";
-	if (code.IsEqualCI("XNYS") || code.IsEqualCI("ARCX"))
-		return "NYSE";
-
-	return tString();
+	// The MIC is trimmed and uppercased (preserving the original case-insensitive match) and hashed with
+	// tHash::tHashCT -- Tacent's compile-time string hash, the same idiom used when parsing the config in
+	// Config.cpp. tHashCT is constexpr, so the case-labels are integral constants and the switch compiles to a
+	// fast lookup; it computes the identical fast hash (tHashStringFast32) that tScript atoms compare against,
+	// which is why the same labels work for the runtime hash of code.Chr() in the switch expression.
+	switch (tHash::tHashCT(code.Chr()))
+	{
+		case tHash::tHashCT("XTSE"): return "TSX";
+		case tHash::tHashCT("XTSX"): return "TSXV";
+		case tHash::tHashCT("NEOE"): return "NEO";
+		case tHash::tHashCT("XNAS"): return "NASDAQ";
+		case tHash::tHashCT("XNYS"):
+		case tHash::tHashCT("ARCX"): return "NYSE";
+		default:                     return tString();
+	}
 }
 
 
