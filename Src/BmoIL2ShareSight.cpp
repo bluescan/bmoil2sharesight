@@ -75,6 +75,8 @@
 #include <System/tPrint.h>
 #include <System/tScript.h>
 #include "Config.h"
+#include "Order.h"
+#include "Trade.h"
 
 
 namespace Bmoil2ShareSightVersion
@@ -122,68 +124,6 @@ namespace BMO2SS
 
 	// Convert an ISO date string ("YYYY-MM-DD") to a day number for comparison.
 	int DateToDayNum(const tString& date);
-
-	// One trade -- a single row (a fill) of the input -- kept in input order. Several trades of the same
-	// ticker, direction and currency can belong to one order; the fee is computed over the whole order.
-	struct Trade : tLink<Trade>
-	{
-		// Build a trade from one validated input row. Derived values (Gross) are computed on demand via
-		// GrossValue() rather than cached, so the object cannot drift out of sync with its base fields.
-		Trade
-		(
-			int inRow,
-			const tString& tradeDate,
-			const tString& settleDate,
-			const tString& symbol,
-			const tString& currency,
-			const tString& quantity,
-			const tString& price,
-			const char* transactionType,
-			double totalAbs
-		)
-			: InRow(inRow),
-			TradeDate(tradeDate),
-			SettleDate(settleDate),
-			Symbol(symbol),
-			Currency(currency),
-			Quantity(quantity),
-			Price(price),
-			TransactionType(transactionType),
-			TotalAbs(totalAbs)
-		{
-		}
-
-		int InRow;						// 1-based row in the input file (for warnings)
-		tString TradeDate;
-		tString SettleDate;
-		tString Symbol;
-		tString Currency;				// the Price Currency of the trade (part of the (ticker, currency) market key)
-		tString Quantity;
-		tString Price;
-		const char* TransactionType;	// "BUY" or "SELL"
-		double TotalAbs;				// |Total Amount| (0 when the cell is empty)
-		tString Brokerage;				// computed fee; empty == left blank
-
-		// |Quantity| as a double (the sign is irrelevant to the fee maths).
-		double AbsQuantity() const
-		{
-			double q = Quantity.GetAsDouble();
-			return (q < 0.0) ? -q : q;
-		}
-
-		// |Quantity| * Price (equivalent to the old cached Gross), computed on demand.
-		double GrossValue() const
-		{
-			double g = Quantity.GetAsDouble() * Price.GetAsDouble();
-			return (g < 0.0) ? -g : g;
-		}
-
-		// Day number of the trade date, for chronological comparison.
-		int DayNum() const
-		{
-			return DateToDayNum(TradeDate);
-		}
-	};
 
 	// Replaces the file extension of the supplied path with "_sharesight.csv".
 	tString DefaultOutputName(const tString& inputName);
@@ -264,104 +204,6 @@ namespace BMO2SS
 	// Compute the brokerage for every trade (see the file header for the algorithm).
 	bool ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lookaheadDays);
 
-	// A reconstructed "order": NOT a real broker order and NOT a CSV row. It is a transient fee bucket the algorithm
-	// builds in memory, accumulating the trades that settle together until the fee "closes". It is never persisted; it
-	// exists only for the duration of ComputeBrokerages to work out the fee and the leg (the highest-|Total Amount|
-	// trade, ties -> last) that will carry it. Derives from tLink so it can live on a tList.
-	class Order : public tLink<Order>
-	{
-	public:
-		tString Ticker;       // upper-case symbol
-		tString Direction;    // "BUY" or "SELL"
-		tString Currency;     // upper-case currency
-		int DayNum;           // day number of the order's opening date
-		int TradeCount;       // number of legs absorbed
-		double SumTotal;      // running SUM of |Total Amount| (feeds Fee())
-		double SumGross;      // running SUM of |Quantity| * Price (feeds Fee())
-		double MaxTotal;      // running MAX of |Total Amount| (carrier selection)
-		Trade* FeeCarrier;    // the max-|Total Amount| leg (ties -> last) that will receive the fee
-		bool Closed;          // true once finalised (no longer absorbs trades)
-		bool Place;           // true when the fee is in range and non-zero (the projection pass writes it)
-		double PlacedFee;     // the rounded fee to place (meaningful only when Place is true)
-
-		// Set the identity from the first leg and accumulate it.
-		void Open(Trade& first)
-		{
-			Ticker = first.Symbol;
-			Ticker.ToUpper();
-			Direction = first.TransactionType;
-			Currency = first.Currency;
-			Currency.ToUpper();
-			DayNum = first.DayNum();
-			TradeCount = 0;
-			SumTotal = 0.0;
-			SumGross = 0.0;
-			MaxTotal = -1.0;
-			FeeCarrier = nullptr;
-			Closed = false;
-			Place = false;
-			PlacedFee = 0.0;
-			Submit(first);
-		}
-
-		// Absorb one more leg: keep the running sums (fee) and the running max (carrier, ties -> last via >=).
-		void Submit(Trade& t)
-		{
-			SumTotal += t.TotalAbs;
-			SumGross += t.GrossValue();
-			TradeCount++;
-			if (t.TotalAbs >= MaxTotal)
-			{
-				FeeCarrier = &t;
-				MaxTotal = t.TotalAbs;
-			}
-		}
-
-		// True when this trade matches the order (same ticker, direction and currency).
-		bool CanConsume(const Trade& t) const
-		{
-			return	Ticker.IsEqualCI(t.Symbol) &&
-					Direction == t.TransactionType &&
-					Currency.IsEqualCI(t.Currency);
-		}
-
-		// The order's brokerage fee (BUY: sumTotal - sumGross; SELL: sumGross - sumTotal).
-		double Fee() const
-		{
-			if (Direction[0] == 'S')
-				return SumGross - SumTotal;
-
-			return SumTotal - SumGross;
-		}
-
-		// True when the fee is within the acceptable band (approximately zero to feeThreshold).
-		bool InRange(double feeThreshold) const
-		{
-			return (Fee() >= -1.0) && (Fee() <= feeThreshold);
-		}
-
-		bool IsClosed() const
-		{
-			return Closed;
-		}
-
-		// Finalise the order (it will no longer absorb trades). When 'place' is true the fee is in range and we record
-		// it (blanking it if it rounds to ~0); otherwise the fee is left blank.
-		void Finalize(bool place, double feeThreshold)
-		{
-			Closed = true;
-			if (place && InRange(feeThreshold))
-			{
-				PlacedFee = std::round(Fee() * 100.0) / 100.0;
-				Place = (PlacedFee > 0.005);
-			}
-			else
-			{
-				Place = false;
-				PlacedFee = 0.0;
-			}
-		}
-	};
 }
 
 
@@ -858,12 +700,12 @@ bool BMO2SS::ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lo
 				if (!CanPromptForMarket())
 				{
 					tPrintf("Non-interactive: %s %s order exceeded %d days; fee set to zero.\n",
-						order->Direction, order->Ticker.Chr(), lookaheadDays);
+						order->Direction.Chr(), order->Ticker.Chr(), lookaheadDays);
 					order->Finalize(false, feeThreshold);
 					continue;
 				}
 				tPrintf("Order %s %s (row %d, %d trades) exceeded the %d-day lookahead with an out-of-range fee.\n",
-					order->Direction, order->Ticker.Chr(),
+					order->Direction.Chr(), order->Ticker.Chr(),
 					(order->FeeCarrier ? order->FeeCarrier->InRow : 0), order->TradeCount, lookaheadDays);
 				tPrintf("Set the fee to zero, or quit? [z/Q]: ");
 				fflush(stdout);
@@ -914,7 +756,7 @@ bool BMO2SS::ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lo
 		else
 		{
 			tPrintf("Warning: %s %s order (row %d, %d trades) has an out-of-range fee.\n",
-				order->Direction, order->Ticker.Chr(),
+				order->Direction.Chr(), order->Ticker.Chr(),
 				(order->FeeCarrier ? order->FeeCarrier->InRow : 0), order->TradeCount);
 			if (!CanPromptForMarket())
 			{
@@ -1172,7 +1014,7 @@ int main(int argc, char** argv)
 			continue;
 		}
 
-		// Quantity is signed (Sells are negative), so allow a leading '-' as well as a decimal point.
+		// Quantity is signed (Sells are negative) and must be a whole number: ShareSight expects an integer.
 		bool quantityOk = quantity.IsValid() && quantity.IsNumeric(true, true);
 
 		if (!quantityOk)
@@ -1182,12 +1024,26 @@ int main(int argc, char** argv)
 			continue;
 		}
 
+		// Reject a fractional quantity (ShareSight expects a whole number of shares).
+		double quantityValue = quantity.GetAsDouble();
+
+		if (quantityValue != std::floor(quantityValue))
+		{
+			skipped++;
+			tPrintf("Warning: row %d: fractional Quantity '%s'; skipped.\n", row + 1, quantity.Chr());
+			continue;
+		}
+
+		int quantityInt = (int)quantityValue;
+
 		if (price.IsEmpty() || !price.IsNumeric(true))
 		{
 			skipped++;
 			tPrintf("Warning: row %d: invalid Price '%s'; skipped.\n", row + 1, price.Chr());
 			continue;
 		}
+
+		double priceValue = price.GetAsDouble();
 
 		// Total Amount is signed (buys are negative), so allow a leading '-' as well as a decimal point.
 		// A zero or blank total is fine: in a multi-trade order the sibling trades carry the order's total.
@@ -1204,7 +1060,7 @@ int main(int argc, char** argv)
 		// Append a new trade to the list (the tList owns the node and frees it on destruction).
 		BMO2SS::Trade* newTrade = new BMO2SS::Trade
 		(
-			row + 1, tradeDate, settleDate, symbol, currency, quantity, price, transactionType, totalAbs
+			row + 1, tradeDate, settleDate, symbol, currency, quantityInt, priceValue, transactionType, totalAbs
 		);
 		trades.Append(newTrade);
 
@@ -1283,8 +1139,8 @@ int main(int argc, char** argv)
 				trade->InRow, trade->Symbol.Chr()
 			);
 		outRowCells.Append(new tStringItem(market));
-		outRowCells.Append(new tStringItem(trade->Quantity));
-		outRowCells.Append(new tStringItem(trade->Price));
+		outRowCells.Append(new tStringItem(tsrPrintf("%d", trade->Quantity)));
+		outRowCells.Append(new tStringItem(tsrPrintf("%0.4f", trade->Price)));
 		outRowCells.Append(new tStringItem(trade->TransactionType));
 		outRowCells.Append(new tStringItem());	// Exchange Rate
 		outRowCells.Append(new tStringItem(trade->Brokerage));

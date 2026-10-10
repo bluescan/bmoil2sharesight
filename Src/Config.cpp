@@ -181,39 +181,39 @@ bool BMO2SS::Configuration::Save(const tString& filename) const
 	writer.CR();
 	writer.End();
 
-	// Ignored (only when present).
+	// Ignored (always written).
+	writer.CR();
+	writer.Rem("Ignored");
+	writer.Rem("Tickers dropped from the output (eg. a Norbert's Gambit vehicle).");
+	writer.Begin();
+	writer.Atom("Ignored");
+	writer.Indent();
 	if (Ignored.First())
 	{
 		writer.CR();
-		writer.Rem("Ignored");
-		writer.Rem("Tickers dropped from the output (eg. a Norbert's Gambit vehicle).");
-		writer.Begin();
-		writer.Atom("Ignored");
-		writer.Indent();
-		writer.CR();
 		for (tStringItem* item = Ignored.First(); item; item = item->Next())
 			writer.Atom(*item);
-		writer.Dedent();
-		writer.CR();
-		writer.End();
 	}
+	writer.Dedent();
+	writer.CR();
+	writer.End();
 
-	// Reviewed (only when present).
+	// Reviewed (always written).
+	writer.CR();
+	writer.Rem("Reviewed");
+	writer.Rem("Flagged as a possible Norbert's Gambit and kept, so not asked again.");
+	writer.Begin();
+	writer.Atom("Reviewed");
+	writer.Indent();
 	if (Reviewed.First())
 	{
 		writer.CR();
-		writer.Rem("Reviewed");
-		writer.Rem("Flagged as a possible Norbert's Gambit and kept, so not asked again.");
-		writer.Begin();
-		writer.Atom("Reviewed");
-		writer.Indent();
-		writer.CR();
 		for (tStringItem* item = Reviewed.First(); item; item = item->Next())
 			writer.Atom(*item);
-		writer.Dedent();
-		writer.CR();
-		writer.End();
 	}
+	writer.Dedent();
+	writer.CR();
+	writer.End();
 
 	return true;
 }
