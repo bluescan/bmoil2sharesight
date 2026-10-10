@@ -137,37 +137,38 @@ bool BMO2SS::Configuration::Save(const tString& filename) const
 	tExprWriter writer(filename);
 
 	// Header comment block, then a blank line before the first section.
-	writer.Rem("BmoIL2ShareSight configuration (tScript s-expr format).");
-	writer.Rem("Markets: [TICKER:CURR MIC]; the MIC is an ISO 10383 code");
-	writer.Rem("converted to the ShareSight Market Code in the output CSV.");
+	writer.RemBegin();
+	writer.RemLine("BmoIL2ShareSight configuration (tScript s-expr format).");
+	writer.RemLine("This is a generated file. It may be hand edited. Semantic changes are preserved.");
+	writer.RemEnd();
 	writer.CR();
 
-	// Markets (always written).
+	// Markets.
+	writer.Rem("Markets");
+	writer.Rem("Take format [TICKER:CURR MIC] where MIC is the ISO 10383 code.");
+	writer.Rem("Converted to the ShareSight Market Code in the output CSV.");
 	writer.Begin();
 	writer.Atom("Markets");
 	writer.Indent();
-	if (Markets.First())
+	writer.CR();
+	for (MarketEntry* m = Markets.First(); m; m = m->Next())
 	{
-		writer.CR();
-		MarketEntry* last = Markets.Last();
-		for (MarketEntry* m = Markets.First(); m; m = m->Next())
-		{
-			tString key = m->Ticker + ":" + m->Currency;
+		tString key = m->Ticker + ":" + m->Currency;
 
-			// Compose every entry but the last with a trailing newline (Comp), and the last without one (Coms), so
-			// there is no blank line before the closing "]".
-			if (m == last)
-				writer.Coms(key, m->Mic);
-			else
-				writer.Comp(key, m->Mic);
-		}
+		// Compose every entry but the last with a trailing newline (Comp), and the last without one (Coms), so
+		// there is no blank line before the closing "]".
+		if (m == Markets.Last())
+			writer.Coms(key, m->Mic);
+		else
+			writer.Comp(key, m->Mic);
 	}
 	writer.Dedent();
 	writer.CR();
 	writer.End();
-
-	// Blank line, then the Options section (always written).
 	writer.CR();
+	writer.CR();
+
+	// Options.
 	writer.Rem("Options");
 	writer.Rem("FeeThreshold  : Max fee (in trade currency) before a group must absorb more legs.");
 	writer.Rem("LookaheadDays : Max day span for a group before it must close.");
@@ -180,40 +181,37 @@ bool BMO2SS::Configuration::Save(const tString& filename) const
 	writer.Dedent();
 	writer.CR();
 	writer.End();
-
-	// Ignored (always written).
 	writer.CR();
+	writer.CR();
+
+	// Ignored.
 	writer.Rem("Ignored");
 	writer.Rem("Tickers dropped from the output (eg. a Norbert's Gambit vehicle).");
 	writer.Begin();
 	writer.Atom("Ignored");
 	writer.Indent();
-	if (Ignored.First())
-	{
-		writer.CR();
-		for (tStringItem* item = Ignored.First(); item; item = item->Next())
-			writer.Atom(*item);
-	}
+	writer.CR();
+	for (tStringItem* item = Ignored.First(); item; item = item->Next())
+		writer.Atom(*item);
 	writer.Dedent();
 	writer.CR();
 	writer.End();
-
-	// Reviewed (always written).
 	writer.CR();
+	writer.CR();
+
+	// Reviewed.
 	writer.Rem("Reviewed");
 	writer.Rem("Flagged as a possible Norbert's Gambit and kept, so not asked again.");
 	writer.Begin();
 	writer.Atom("Reviewed");
 	writer.Indent();
-	if (Reviewed.First())
-	{
-		writer.CR();
-		for (tStringItem* item = Reviewed.First(); item; item = item->Next())
-			writer.Atom(*item);
-	}
+	writer.CR();
+	for (tStringItem* item = Reviewed.First(); item; item = item->Next())
+		writer.Atom(*item);
 	writer.Dedent();
 	writer.CR();
 	writer.End();
+	writer.CR();
 
 	return true;
 }

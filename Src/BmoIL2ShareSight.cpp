@@ -209,14 +209,9 @@ namespace BMO2SS
 
 tString BMO2SS::DefaultOutputName(const tString& inputName)
 {
-	// ExtractLeft('.') returns the part before the first '.' (and leaves the remainder in the string).
-	// Use the return value, falling back to the whole name when the input has no extension.
-	tString name(inputName);
-	tString base = name.ExtractLeft('.');
-	if (base.IsEmpty())
-		base = name;
-
-	return base + "_sharesight.csv";
+	// tGetFileBaseName returns the filename without its final extension (eg. "My.Trades.2026.csv" -> "My.Trades.2026"),
+	// so a name with several periods keeps its leading ones. Prepend the directory portion and append the suffix.
+	return tSystem::tGetDir(inputName) + tSystem::tGetFileBaseName(inputName) + "_sharesight.csv";
 }
 
 
@@ -995,7 +990,6 @@ int main(int argc, char** argv)
 		else
 		{
 			skipped++;
-			tPrintf("Info: row %d: activity '%s' is not a Buy or Sell; skipped.\n", row + 1, activity.Chr());
 			continue;
 		}
 
@@ -1056,6 +1050,16 @@ int main(int argc, char** argv)
 			if (totalAbs < 0.0)
 				totalAbs = -totalAbs;
 		}
+
+		// Log each converted row (direction, instrument, size, price, currency); the skipped non-Buy/Sell rows are not logged.
+		// The quantity is shown as an absolute number -- the Buy/Sell direction already carries the sign.
+		tPrintf("Processing row %3d: %4s %4s %6d @ %9.4f %s\n",
+		        row + 1,
+		        (transactionType[0] == 'B') ? "Buy" : "Sell",
+		        symbol.Chr(),
+		        (quantityInt < 0) ? -quantityInt : quantityInt,
+		        priceValue,
+		        currency.Chr());
 
 		// Append a new trade to the list (the tList owns the node and frees it on destruction).
 		BMO2SS::Trade* newTrade = new BMO2SS::Trade
@@ -1171,8 +1175,8 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	tPrintf("Input   : %s\n", inputFile.Chr());
-	tPrintf("Output  : %s\n", outputFile.Chr());
+	tPrintf("Input   : %s\n", tSystem::tGetFileName(inputFile).Chr());
+	tPrintf("Output  : %s\n", tSystem::tGetFileName(outputFile).Chr());
 
 	if (droppedNorbert > 0)
 		tPrintf("Info    : Ignored %d row(s) for the detected Norbert's Gambit ticker(s).\n", droppedNorbert);
