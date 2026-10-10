@@ -120,10 +120,39 @@ namespace BMO2SS
 	tCmdLine::tParam ParamOutput("ShareSight bulk-trades CSV to write (output). Defaults to the input name with _sharesight.csv.", "Output", 2);
 	tCmdLine::tOption OptionHelp("Display help.", "help", 'h');
 
+	// Convert an ISO date string ("YYYY-MM-DD") to a day number for comparison.
+	int DateToDayNum(const tString& date);
+
 	// One trade -- a single row (a fill) of the input -- kept in input order. Several trades of the same
 	// ticker, direction and currency can belong to one order; the fee is computed over the whole order.
 	struct Trade : tLink<Trade>
 	{
+		// Build a trade from one validated input row. Derived values (Gross) are computed on demand via
+		// GrossValue() rather than cached, so the object cannot drift out of sync with its base fields.
+		Trade
+		(
+			int inRow,
+			const tString& tradeDate,
+			const tString& settleDate,
+			const tString& symbol,
+			const tString& currency,
+			const tString& quantity,
+			const tString& price,
+			const char* transactionType,
+			double totalAbs
+		)
+			: InRow(inRow),
+			TradeDate(tradeDate),
+			SettleDate(settleDate),
+			Symbol(symbol),
+			Currency(currency),
+			Quantity(quantity),
+			Price(price),
+			TransactionType(transactionType),
+			TotalAbs(totalAbs)
+		{
+		}
+
 		int InRow;						// 1-based row in the input file (for warnings)
 		tString TradeDate;
 		tString SettleDate;
@@ -132,10 +161,28 @@ namespace BMO2SS
 		tString Quantity;
 		tString Price;
 		const char* TransactionType;	// "BUY" or "SELL"
-		bool ZeroTotal;					// Total Amount cell was empty or 0
 		double TotalAbs;				// |Total Amount| (0 when the cell is empty)
-		double Gross;					// |Quantity| * Price
 		tString Brokerage;				// computed fee; empty == left blank
+
+		// |Quantity| as a double (the sign is irrelevant to the fee maths).
+		double AbsQuantity() const
+		{
+			double q = Quantity.GetAsDouble();
+			return (q < 0.0) ? -q : q;
+		}
+
+		// |Quantity| * Price (equivalent to the old cached Gross), computed on demand.
+		double GrossValue() const
+		{
+			double g = Quantity.GetAsDouble() * Price.GetAsDouble();
+			return (g < 0.0) ? -g : g;
+		}
+
+		// Day number of the trade date, for chronological comparison.
+		int DayNum() const
+		{
+			return DateToDayNum(TradeDate);
+		}
 	};
 
 	// Replaces the file extension of the supplied path with "_sharesight.csv".
@@ -214,9 +261,6 @@ namespace BMO2SS
 		const tList<NorbertSuspect>& suspects
 	);
 
-	// Convert an ISO date string ("YYYY-MM-DD") to a day number for comparison.
-	int DateToDayNum(const tString& date);
-
 	// Compute the brokerage for every trade (see the file header for the algorithm).
 	bool ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lookaheadDays);
 
@@ -248,7 +292,7 @@ namespace BMO2SS
 			Direction = first.TransactionType;
 			Currency = first.Currency;
 			Currency.ToUpper();
-			DayNum = DateToDayNum(first.TradeDate);
+			DayNum = first.DayNum();
 			TradeCount = 0;
 			SumTotal = 0.0;
 			SumGross = 0.0;
@@ -264,7 +308,7 @@ namespace BMO2SS
 		void Submit(Trade& t)
 		{
 			SumTotal += t.TotalAbs;
-			SumGross += t.Gross;
+			SumGross += t.GrossValue();
 			TradeCount++;
 			if (t.TotalAbs >= MaxTotal)
 			{
@@ -471,9 +515,7 @@ void BMO2SS::FindNorbertSuspects
 					if (!j->Symbol.IsEqualCI(p->Symbol) || !j->TradeDate.IsEqualCI(date))
 						continue;
 
-					double qnt = j->Quantity.GetAsDouble();
-					if (qnt < 0.0)
-						qnt = -qnt;
+					double qnt = j->AbsQuantity();
 
 					const bool isP = j->Currency.IsEqualCI(p->Currency);
 					const bool isQ = j->Currency.IsEqualCI(q->Currency);
@@ -773,7 +815,7 @@ bool BMO2SS::ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lo
 		const Trade* a = trades.First();
 		for (const Trade* b = (a ? a->Next() : nullptr); b; a = b, b = b->Next())
 		{
-			if (DateToDayNum(a->TradeDate) < DateToDayNum(b->TradeDate))
+			if (a->DayNum() < b->DayNum())
 			{
 				tPrintf("Error: transactions are not in chronological order.\n");
 				tPrintf("Row %d (%s) is older than row %d (%s).\n",
@@ -787,7 +829,7 @@ bool BMO2SS::ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lo
 	// Process from oldest to newest (the list is newest-first, so iterate Last() -> Prev()).
 	for (Trade* trade = trades.Last(); trade; trade = trade->Prev())
 	{
-		int dayNum = DateToDayNum(trade->TradeDate);
+		int dayNum = trade->DayNum();
 
 		bool consumed = false;
 		for (Order* order = orders.First(); order; order = order->Next())
@@ -1160,22 +1202,11 @@ int main(int argc, char** argv)
 		}
 
 		// Append a new trade to the list (the tList owns the node and frees it on destruction).
-		BMO2SS::Trade* newTrade = new BMO2SS::Trade();
+		BMO2SS::Trade* newTrade = new BMO2SS::Trade
+		(
+			row + 1, tradeDate, settleDate, symbol, currency, quantity, price, transactionType, totalAbs
+		);
 		trades.Append(newTrade);
-		BMO2SS::Trade& trade = *newTrade;
-		trade.InRow = row + 1;
-		trade.TradeDate = tradeDate;
-		trade.SettleDate = settleDate;
-		trade.Symbol = symbol;
-		trade.Currency = currency;
-		trade.Quantity = quantity;
-		trade.Price = price;
-		trade.TransactionType = transactionType;
-		trade.TotalAbs = totalAbs;
-		trade.ZeroTotal = (trade.TotalAbs <= 0.005);
-		trade.Gross = quantity.GetAsDouble() * price.GetAsDouble();
-		if (trade.Gross < 0.0)
-			trade.Gross = -trade.Gross;
 
 		converted++;
 	}

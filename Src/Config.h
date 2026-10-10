@@ -24,44 +24,46 @@
 #pragma once
 #include <Foundation/tString.h>
 #include <Foundation/tList.h>
-
-
 namespace BMO2SS
 {
-	// A single market entry: the ticker, its trade currency, and the ISO 10383 market identifier code.
-	// Written to the config as [TICKER:CURR MIC].
-	struct MarketEntry : tLink<MarketEntry>
-	{
-		tString Ticker;
-		tString Currency;
-		tString Mic;
-	};
 
 
-	// Loads and saves the bmoil2sharesight.cfg file. A default-constructed object has every value at its default, so
-	// Load() can be called on a fresh instance and any key the file does not record keeps that default.
-	class Configuration
-	{
-	public:
-		Configuration();
+// A single market entry: the ticker, its trade currency, and the ISO 10383 market identifier code.
+// Written to the config as [TICKER:CURR MIC].
+struct MarketEntry : tLink<MarketEntry>
+{
+	tString Ticker;
+	tString Currency;
+	tString Mic;
+};
 
-		// Reads the config file into the members. A key that is absent keeps its current value, and a missing or
-		// unreadable file leaves the members exactly as they are (defaults for a fresh object). Repeated loads do not
-		// accumulate duplicate entries.
-		void Load(const tString& filename);
 
-		// Writes the members to the config file (creating or overwriting it). Returns false if the file could not be
-		// written.
-		bool Save(const tString& filename) const;
+// Loads and saves the bmoil2sharesight.cfg file. A default-constructed object has every value at its default, so
+// Load() can be called on a fresh instance and any key the file does not record keeps that default.
+class Configuration
+{
+public:
+	Configuration();
 
-		tList<MarketEntry>  Markets;			// [TICKER:CURR MIC] entries
-		double              FeeThreshold;		// maximum fee before a group must absorb more legs
-		int                 LookaheadDays;		// maximum day span before a group must close
-		tList<tStringItem>  Ignored;			// tickers dropped from the output
-		tList<tStringItem>  Reviewed;			// tickers kept (reviewed) after a Norbert's Gambit prompt
+	// Reads the config file into the members. A key that is absent keeps its current value, and a missing or
+	// unreadable file leaves the members exactly as they are (defaults for a fresh object). Repeated loads do not
+	// accumulate duplicate entries.
+	void Load(const tString& filename);
 
-	private:
-		static const double DefaultFeeThreshold;
-		static const int    DefaultLookaheadDays;
-	};
+	// Writes the members to the config file (creating or overwriting it). Returns false if the file could not be
+	// written.
+	bool Save(const tString& filename) const;
+
+	tList<MarketEntry>  Markets;			// [TICKER:CURR MIC] entries
+	double              FeeThreshold;		// maximum fee before a group must absorb more legs
+	int                 LookaheadDays;		// maximum day span before a group must close
+	tList<tStringItem>  Ignored;			// tickers dropped from the output
+	tList<tStringItem>  Reviewed;			// tickers kept (reviewed) after a Norbert's Gambit prompt
+
+private:
+	static const double DefaultFeeThreshold;
+	static const int    DefaultLookaheadDays;
+};
+
+
 }
