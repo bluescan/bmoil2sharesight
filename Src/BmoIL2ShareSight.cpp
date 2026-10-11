@@ -634,7 +634,7 @@ int BMO2SS::DateToDayNum(const tString& date)
 bool BMO2SS::ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lookaheadDays)
 {
 	// A tList of reconstructed orders. Open orders absorb matching trades; closed ones are kept (and skipped by
-	// the scan) so that a single projection pass at the end can write each placed fee onto its carrier leg.
+	// the scan) so that a single projection pass at the end can write each placed fee onto its carrier trade.
 	tList<Order> orders;
 
 	// Verify the data is in reverse-chronological order (newest first in the list, which is the Append order).
@@ -780,7 +780,7 @@ bool BMO2SS::ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lo
 		}
 	}
 
-	// Projection pass: each placed fee is written onto its carrier leg (the highest |Total Amount| leg, ties -> last).
+	// Projection pass: each placed fee is written onto its carrier trade (the highest |Total Amount| trade, ties -> last).
 	for (Order* order = orders.First(); order; order = order->Next())
 	{
 		if (order->Place && order->FeeCarrier)

@@ -2,7 +2,7 @@
 //
 // A reconstructed "order": not a real broker order and not a CSV row. It is a transient fee bucket the algorithm
 // builds in memory, accumulating the trades that settle together until the fee "closes". It is never persisted; it
-// exists only for the duration of ComputeBrokerages to work out the fee and the leg (the highest-|Total Amount|
+// exists only for the duration of ComputeBrokerages to work out the fee and the trade (the highest-|Total Amount|
 // trade, ties -> last) that will carry it.
 //
 // Copyright (c) 2026 Tristan Grimmer.
@@ -31,19 +31,19 @@ public:
 	tString Direction;	// "BUY" or "SELL".
 	tString Currency;	// Upper-case currency.
 	int DayNum;			// Day number of the order's opening date.
-	int TradeCount;		// Number of legs absorbed.
+	int TradeCount;		// Number of trades absorbed.
 	double SumTotal;	// Running SUM of |Total Amount| (feeds Fee()).
 	double SumGross;	// Running SUM of |Quantity| * Price (feeds Fee()).
 	double MaxTotal;	// Running MAX of |Total Amount| (carrier selection).
-	Trade* FeeCarrier;	// The max-|Total Amount| leg (ties -> last) that will receive the fee.
+	Trade* FeeCarrier;	// The max-|Total Amount| trade (ties -> last) that will receive the fee.
 	bool Closed;		// True once finalised (no longer absorbs trades).
 	bool Place;			// True when the fee is in range and non-zero (the projection pass writes it).
 	double PlacedFee;	// The rounded fee to place (meaningful only when Place is true).
 
-	// Set the identity from the first leg and accumulate it.
+	// Set the identity from the first trade and accumulate it.
 	void Open(Trade& first);
 
-	// Absorb one more leg: keep the running sums (fee) and the running max (carrier, ties -> last via >=).
+	// Absorb one more trade. Keep the running sums (fee) and the running max (carrier, ties -> last via >=).
 	void Submit(Trade& t);
 
 	// True when this trade matches the order (same ticker, direction and currency).

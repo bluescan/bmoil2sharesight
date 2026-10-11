@@ -4,12 +4,12 @@
 // notation (a human-readable symbolic expression). The file lives next to the executable.
 //
 // The config holds:
-//   Markets   : a list of [TICKER:CURR MIC] entries (MIC is an ISO 10383 code, which BmoIL2ShareSight maps to the
-//               ShareSight Market Code).
-//   feeThreshold      : maximum fee (in trade currency) before a group must absorb more legs.
-//   maxLookaheadDays  : maximum day span for a group before it must close.
-//   Ignored   : tickers dropped from the output (eg. a Norbert's Gambit vehicle).
-//   Reviewed  : tickers flagged as a possible Norbert's Gambit and kept, so the prompt is not asked again.
+//	Markets				: A list of [TICKER:CURR MIC] entries (MIC is an ISO 10383 code, which BmoIL2ShareSight maps to the
+//						  ShareSight Market Code).
+//	FeeThreshold		: Maximum fee (in trade currency) before an order must absorb more trades.
+//	MaxLookaheadDays	: Maximum day span for an order before it must close.
+//	Ignored				: Tickers dropped from the output (eg. a Norbert's Gambit vehicle).
+//	Reviewed			: Tickers flagged as a possible Norbert's Gambit and kept, so the prompt is not asked again.
 //
 // Copyright (c) 2026 Tristan Grimmer.
 // Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby
@@ -54,11 +54,11 @@ public:
 	// written.
 	bool Save(const tString& filename) const;
 
-	tList<MarketEntry>  Markets;			// [TICKER:CURR MIC] entries
-	double              FeeThreshold;		// maximum fee before a group must absorb more legs
-	int                 LookaheadDays;		// maximum day span before a group must close
-	tList<tStringItem>  Ignored;			// tickers dropped from the output
-	tList<tStringItem>  Reviewed;			// tickers kept (reviewed) after a Norbert's Gambit prompt
+	tList<MarketEntry>  Markets;			// [TICKER:CURR MIC] entries.
+	double              FeeThreshold;		// Maximum fee before an order must absorb more trades.
+	int                 LookaheadDays;		// Maximum day span before an order must close.
+	tList<tStringItem>  Ignored;			// Tickers dropped from the output.
+	tList<tStringItem>  Reviewed;			// Tickers kept (reviewed) after a Norbert's Gambit prompt.
 
 private:
 	static const double DefaultFeeThreshold;

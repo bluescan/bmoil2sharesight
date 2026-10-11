@@ -170,8 +170,8 @@ bool BMO2SS::Configuration::Save(const tString& filename) const
 
 	// Options.
 	writer.Rem("Options");
-	writer.Rem("FeeThreshold  : Max fee (in trade currency) before a group must absorb more legs.");
-	writer.Rem("LookaheadDays : Max day span for a group before it must close.");
+	writer.Rem("FeeThreshold  : Max fee (in trade currency) before an order must absorb more trades.");
+	writer.Rem("LookaheadDays : Max day span for an order before it must close.");
 	writer.Begin();
 	writer.Atom("Options");
 	writer.Indent();
