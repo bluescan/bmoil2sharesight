@@ -115,6 +115,7 @@ namespace BMO2SS
 	tCmdLine::tParam ParamInput("Investorline transaction-history CSV to read (input)", "Input", 1);
 	tCmdLine::tParam ParamOutput("ShareSight bulk-trades CSV to write (output). Defaults to the input name with _sharesight.csv.", "Output", 2);
 	tCmdLine::tOption OptionHelp("Display help.", "help", 'h');
+	tCmdLine::tOption OptionSyntax("Display syntax help.", "syntax", 's');
 
 	// Convert an ISO date string ("YYYY-MM-DD") to a day number for comparison.
 	int DateToDayNum(const tString& date);
@@ -792,6 +793,30 @@ bool BMO2SS::ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lo
 
 int main(int argc, char** argv)
 {
+	// Config: market codes (per ticker, or per ticker+currency), the fee-ordering options, ignored tickers, and kept
+	// (reviewed) tickers -- all in a single object loaded from the file next to the executable (tScript s-expr format).
+	// Market codes are added when the user answers the prompt for a pair that is not recorded yet; ignored/kept tickers
+	// are recorded when the user answers the Norbert's Gambit prompt.
+	// Note: We always load and save the config. This allows us to just run the tool to get a good config template even
+	// if it doesn't exist yet.
+	BMO2SS::Configuration config;
+	config.Load(BMO2SS::ConfigFile());
+
+	// The run records market codes and ignored/reviewed tickers as it goes. Persist whatever was learned on every
+	// exit path (a successful run or any of the early "return 1" below) rather than saving piecemeal during the
+	// prompts: this guard saves once, on scope exit, and covers each early return above it.
+	struct SaveConfigOnScopeExit
+	{
+		const BMO2SS::Configuration& config;
+		const tString& filename;
+
+		~SaveConfigOnScopeExit()
+		{
+			if (!config.Save(filename))
+				tPrintf("Warning: could not save the config file.\n");
+		}
+	} saveConfigOnExit{ config, BMO2SS::ConfigFile() };
+
 	tCmdLine::tParse(argc, argv);
 
 	if (BMO2SS::OptionHelp)
@@ -802,14 +827,24 @@ int main(int argc, char** argv)
 			u8"BmoIL2ShareSight converts an Investorline transaction-history CSV into the ShareSight bulk-trades format.",
 			Bmoil2ShareSightVersion::Major, Bmoil2ShareSightVersion::Minor, Bmoil2ShareSightVersion::Revision
 		);
-		tCmdLine::tPrintSyntax();
 		return 0;
 	}
 
+	if (BMO2SS::OptionSyntax)
+	{
+		tCmdLine::tPrintSyntax();
+		return 0;
+	}
+	
 	if (!BMO2SS::ParamInput)
 	{
+		tCmdLine::tPrintUsage
+		(
+			u8"Tristan Grimmer",
+			u8"BmoIL2ShareSight converts an Investorline transaction-history CSV into the ShareSight bulk-trades format.",
+			Bmoil2ShareSightVersion::Major, Bmoil2ShareSightVersion::Minor, Bmoil2ShareSightVersion::Revision
+		);
 		tPrintf("Error: No input file specified.\n");
-		tCmdLine::tPrintSyntax();
 		return 1;
 	}
 
@@ -862,28 +897,6 @@ int main(int argc, char** argv)
 			return 1;
 		}
 	}
-
-	// Config: market codes (per ticker, or per ticker+currency), the fee-ordering options, ignored tickers, and kept
-	// (reviewed) tickers -- all in a single object loaded from the file next to the executable (tScript s-expr format).
-	// Market codes are added when the user answers the prompt for a pair that is not recorded yet; ignored/kept tickers
-	// are recorded when the user answers the Norbert's Gambit prompt.
-	BMO2SS::Configuration config;
-	config.Load(BMO2SS::ConfigFile());
-
-	// The run records market codes and ignored/reviewed tickers as it goes. Persist whatever was learned on every
-	// exit path (a successful run or any of the early "return 1" below) rather than saving piecemeal during the
-	// prompts: this guard saves once, on scope exit, and covers each early return above it.
-	struct SaveConfigOnScopeExit
-	{
-		const BMO2SS::Configuration& config;
-		const tString& filename;
-
-		~SaveConfigOnScopeExit()
-		{
-			if (!config.Save(filename))
-				tPrintf("Warning: could not save the config file.\n");
-		}
-	} saveConfigOnExit{ config, BMO2SS::ConfigFile() };
 
 	// Load the Investorline export.
 	tSystem::tCSV input;
