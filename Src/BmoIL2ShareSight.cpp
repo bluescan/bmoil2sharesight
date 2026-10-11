@@ -57,16 +57,11 @@
 // PERFORMANCE OF THIS SOFTWARE.
 
 #include "Version.cmake.h"
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
 #if defined(_WIN32)
 #include <io.h>
 #else
 #include <unistd.h>
 #endif
-#include <cstdlib>
-#include <cstring>
 #include <Foundation/tHash.h>
 #include <Foundation/tString.h>
 #include <System/tCSV.h>
@@ -93,11 +88,11 @@ Bmoil2ShareSightVersion::Parser::Parser(const char* verStr)
 	if (Parsed)
 		return;
 
-	// verStr is the stringized text of the set(...) call in Version.cmake.h, which is shared with CMake:
-	// at runtime it looks like  "BMOIL2SHARESIGHT_VERSION" "0.1.0"  (CMake variable name and quoted version,
-	// the quotes included). ExtractLeft('_') drops the name prefix and returns it; what we want is the
-	// REMAINDER left in the string (VERSION" "0.1.0"), so the return value is deliberately discarded.
-	// Exploding on '.' then yields three components, whose integral values are the version numbers.
+	// verStr is the stringized text of the set(...) call in Version.cmake.h, which is shared with CMake. At runtime it
+	// looks like  "BMOIL2SHARESIGHT_VERSION" "0.2.0"  (CMake variable name and quoted version, the quotes included).
+	// ExtractLeft('_') drops the name prefix and returns it; what we want is the REMAINDER left in the string
+	// (VERSION" "0.2.0"), so the return value is deliberately discarded. Exploding on '.' then yields three components
+	// whose integral values are the version numbers.
 	tString vstr(verStr);
 	vstr.ExtractLeft('_');
 
@@ -111,11 +106,10 @@ Bmoil2ShareSightVersion::Parser::Parser(const char* verStr)
 }
 
 
-// Command line interface. Parameters and options are declared here (outside main) so that the tool's
-// options are self-documenting and the parser populates them before main runs.
+// Command line interface. Parameters and options are declared here (outside main) so that the tool's options are
+// self-documenting and the parser populates them before main runs.
 //
-// The namespace holds only declarations; every function is defined after the closing brace, scoped
-// with BMO2SS::.
+// The namespace holds only declarations; every function is defined after the closing brace, scoped with BMO2SS::.
 namespace BMO2SS
 {
 	tCmdLine::tParam ParamInput("Investorline transaction-history CSV to read (input)", "Input", 1);
@@ -128,12 +122,12 @@ namespace BMO2SS
 	// Replaces the file extension of the supplied path with "_sharesight.csv".
 	tString DefaultOutputName(const tString& inputName);
 
-	// The config file remembers the market codes and the ignored/kept tickers across runs. It lives next to
-	// the executable:
-	//   <exe-dir>/bmoil2sharesight.cfg
-	// In s-expr format: "Markets" entries are [TICKER:CURR MIC] (MIC is an ISO 10383 code);
-	// "Ignored" entries are tickers dropped from the output; "Reviewed" entries are tickers
-	// flagged as a possible Norbert's Gambit and kept (so the tool does not ask again).
+	// The config file remembers the market codes and the ignored/kept tickers across runs. It lives next to the
+	// executable: <exe-dir>/bmoil2sharesight.cfg.
+	// In s-expr format:
+	//   "Markets" entries are [TICKER:CURR MIC] (MIC is an ISO 10383 code).
+	//   "Ignored" entries are tickers dropped from the output;
+	//   "Reviewed" entries are tickers flagged as a possible Norbert's Gambit and kept (so it does not ask again).
 	tString ConfigFile();
 
 	// True if the symbol is on the ignore list (case-insensitive).
@@ -147,23 +141,20 @@ namespace BMO2SS
 	bool AddIgnored(tList<tStringItem>& ignored, const tString& ticker);
 	bool AddReviewed(tList<tStringItem>& reviewed, const tString& ticker);
 
-	// Convert a MIC to the ShareSight Market Code that is saved in the output CSV. Returns an empty
-	// string when the MIC is not one of the supported codes (see the definition below).
+	// Convert a MIC to the ShareSight Market Code that is saved in the output CSV. Returns an empty string when the MIC
+	// is not one of the supported codes (see the definition below).
 	tString MarketCodeFromMIC(const tString& mic);
 
 	// The ShareSight Market Code recorded for a (ticker, currency) pair. Empty when the pair is not recorded.
 	tString MarketCodeFor(tList<MarketEntry>& markets, const tString& symbol, const tString& currency);
 
-	// True when a market code can be asked for: stdin is an interactive terminal, or piped input that
-	// already has data (an empty pipe cannot answer, so the prompt would only block).
+	// True when a market code can be asked for: stdin is an interactive terminal, or piped input that already has data.
+	// An empty pipe cannot answer so the prompt would only block.
 	bool CanPromptForMarket();
 
-	// Ask (numbered menu) which market a (ticker, currency) pair traded on and record the choice in the
-	// market list (the config file is persisted when the run exits). Returns false to abort the run.
-	bool PromptForMarket
-	(
-		tList<MarketEntry>& markets, const tString& symbol, const tString& currency
-	);
+	// Ask (numbered menu) which market a (ticker, currency) pair traded on and record the choice in the market list
+	// (the config file is persisted when the run exits). Returns false to abort the run.
+	bool PromptForMarket(tList<MarketEntry>& markets, const tString& symbol, const tString& currency);
 
 	// A (ticker, currency) pair present in the input, with a count of the matching buy/sell rows.
 	// Derives from tLink so it can live on a tList (intrusive list; see the tList.h notes).
@@ -174,9 +165,9 @@ namespace BMO2SS
 		int Count;
 	};
 
-	// A symbol suspected of Norbert's Gambit: on at least one day its total Buy quantity in one currency equals
-	// its total Sell quantity in a different currency. Currencies are kept in the order first seen in the input.
-	// Derives from tLink so it can live on a tList.
+	// A symbol suspected of Norbert's Gambit: on at least one day its total Buy quantity in one currency equals its
+	// total Sell quantity in a different currency. Currencies are kept in the order first seen in the input. Derives
+	// from tLink so it can live on a tList.
 	struct NorbertSuspect : tLink<NorbertSuspect>
 	{
 		tString Symbol;
@@ -184,17 +175,17 @@ namespace BMO2SS
 		int TotalRows;   // buy/sell rows for this symbol (across all its currencies/days)
 	};
 
-	// Detect Norbert's Gambit: symbols bought in one currency and sold in another on the same day with matching
-	// share counts, excluding tickers already on the ignore or kept lists. One suspect per symbol (the first
-	// matching day), in first-seen order.
+	// Detect Norbert's Gambit: symbols bought in one currency and sold in another on the same day with matching share
+	// counts, excluding tickers already on the ignore or kept lists. One suspect per symbol (the first matching day),
+	// in first-seen order.
 	void FindNorbertSuspects
 	(
 		const tList<Trade>& trades, tList<tStringItem>& ignored,
 		tList<tStringItem>& reviewed, tList<NorbertSuspect>& suspects
 	);
 
-	// Ask the user to ignore or keep each suspected Norbert's Gambit symbol, updating the ignore/kept lists
-	// (the config file is persisted when the run exits).
+	// Ask the user to ignore or keep each suspected Norbert's Gambit symbol, updating the ignore/kept lists (the config
+	// file is persisted when the run exits).
 	void PromptForNorbert
 	(
 		tList<tStringItem>& ignored, tList<tStringItem>& reviewed,
@@ -536,9 +527,9 @@ bool BMO2SS::PromptForMarket
 	tList<MarketEntry>& markets, const tString& symbol, const tString& currency
 )
 {
-	// The supported MICs in a stable order; the menu numbers follow this list. Desc is the long
-	// market name shown in the menu so the user can tell the entries apart (eg. XNYS vs ARCX) --
-	// kept in sync with the table in Data/Readme.txt.
+	// The supported MICs in a stable order; the menu numbers follow this list. Desc is the long market name shown in
+	// the menu so the user can tell the entries apart (eg. XNYS vs ARCX) -- kept in sync with the table in
+	// Data/Readme.txt.
 	static const struct
 	{
 		const char* Mic;
@@ -633,11 +624,10 @@ int BMO2SS::DateToDayNum(const tString& date)
 
 // Compute the brokerage fee for every trade using the sequential order-closing algorithm.
 //
-// Transactions are processed from oldest to newest. Each transaction is submitted to every
-// open order in succession. An order's submit function first checks whether the date has
-// advanced enough to close (fee in range and day passed, or max lookahead exceeded). Only
-// if the order stays open does it check whether the transaction matches and can be consumed.
-// If no order consumes the transaction, a new order is opened for it.
+// Transactions are processed from oldest to newest. Each transaction is submitted to every open order in succession.
+// An order's submit function first checks whether the date has advanced enough to close (fee in range and day passed,
+// or max lookahead exceeded). Only if the order stays open does it check whether the transaction matches and can be
+// consumed. If no order consumes the transaction, a new order is opened for it.
 //
 // Returns true on success; false if the user chose to quit.
 bool BMO2SS::ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lookaheadDays)
@@ -699,9 +689,13 @@ bool BMO2SS::ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lo
 					order->Finalize(false, feeThreshold);
 					continue;
 				}
-				tPrintf("Order %s %s (row %d, %d trades) exceeded the %d-day lookahead with an out-of-range fee.\n",
+
+				tPrintf
+				(
+					"Order %s %s (row %d, %d trades) exceeded the %d-day lookahead with an out-of-range fee.\n",
 					order->Direction.Chr(), order->Ticker.Chr(),
-					(order->FeeCarrier ? order->FeeCarrier->InRow : 0), order->TradeCount, lookaheadDays);
+					(order->FeeCarrier ? order->FeeCarrier->InRow : 0), order->TradeCount, lookaheadDays
+				);
 				tPrintf("Set the fee to zero, or quit? [z/Q]: ");
 				fflush(stdout);
 				char buf[32];
@@ -750,15 +744,20 @@ bool BMO2SS::ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lo
 		}
 		else
 		{
-			tPrintf("Warning: %s %s order (row %d, %d trades) has an out-of-range fee.\n",
+			tPrintf
+			(
+				"Warning: %s %s order (row %d, %d trades) has an out-of-range fee.\n",
 				order->Direction.Chr(), order->Ticker.Chr(),
-				(order->FeeCarrier ? order->FeeCarrier->InRow : 0), order->TradeCount);
+				(order->FeeCarrier ? order->FeeCarrier->InRow : 0), order->TradeCount
+			);
+
 			if (!CanPromptForMarket())
 			{
 				tPrintf("Non-interactive: fee set to zero.\n");
 				order->Finalize(false, feeThreshold);
 				continue;
 			}
+
 			tPrintf("Set the fee to zero, or quit? [z/Q]: ");
 			fflush(stdout);
 			char buf[32];
@@ -767,6 +766,7 @@ bool BMO2SS::ComputeBrokerages(tList<Trade>& trades, double feeThreshold, int lo
 				order->Finalize(false, feeThreshold);
 				continue;
 			}
+
 			tString choice = buf;
 			choice.Trim();
 			if (choice.IsEqualCI("q"))
@@ -876,7 +876,7 @@ int main(int argc, char** argv)
 	struct SaveConfigOnScopeExit
 	{
 		const BMO2SS::Configuration& config;
-		const tString&              filename;
+		const tString& filename;
 
 		~SaveConfigOnScopeExit()
 		{
@@ -1071,17 +1071,17 @@ int main(int argc, char** argv)
 		converted++;
 	}
 
-	// Norbert's Gambit: detect symbols bought in one currency and sold in another on the same day with
-	// matching share counts, and ask whether to drop them. A "keep" is recorded so the same ticker is not asked
-	// again. This runs before the market-code prompts so a dropped symbol is not asked about.
+	// Norbert's Gambit: detect symbols bought in one currency and sold in another on the same day with matching share
+	// counts, and ask whether to drop them. A "keep" is recorded so the same ticker is not asked again. This runs
+	// before the market-code prompts so a dropped symbol is not asked about.
 	{
 		tList<BMO2SS::NorbertSuspect> suspects;
 		BMO2SS::FindNorbertSuspects(trades, config.Ignored, config.Reviewed, suspects);
 		BMO2SS::PromptForNorbert(config.Ignored, config.Reviewed, suspects);
 	}
 
-	// Market codes: one per (ticker, currency) pair, recorded in the config file. Ask once per
-	// pair that is not recorded yet; each answer is saved to the config file for future runs.
+	// Market codes: one per (ticker, currency) pair, recorded in the config file. Ask once per pair that is not
+	// recorded yet; each answer is saved to the config file for future runs.
 	for (const BMO2SS::Trade* trade = trades.First(); trade; trade = trade->Next())
 	{
 		if (BMO2SS::IsIgnored(trade->Symbol, config.Ignored))
@@ -1142,6 +1142,7 @@ int main(int argc, char** argv)
 				"Warning: Row %d: no market code for %s; the Market Code cell is left blank.\n",
 				trade->InRow, trade->Symbol.Chr()
 			);
+
 		outRowCells.Append(new tStringItem(market));
 		outRowCells.Append(new tStringItem(tsrPrintf("%d", trade->Quantity)));
 		outRowCells.Append(new tStringItem(tsrPrintf("%0.4f", trade->Price)));

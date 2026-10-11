@@ -20,8 +20,7 @@ namespace BMO2SS
 {
 
 
-// Convert an ISO date string ("YYYY-MM-DD") to a day number for comparison (defined in BmoIL2ShareSight.cpp).
-int DateToDayNum(const tString& date);
+extern int DateToDayNum(const tString& date);
 
 
 // One trade: a single row (a fill) of the input, kept in input order. The sign of Quantity distinguishes the
@@ -31,27 +30,21 @@ struct Trade : tLink<Trade>
 	// Build a trade from one validated input row.
 	Trade
 	(
-		int inRow,
-		const tString& tradeDate,
-		const tString& settleDate,
-		const tString& symbol,
-		const tString& currency,
-		int quantity,
-		double price,
-		const char* transactionType,
-		double totalAbs
+		int inRow, const tString& tradeDate, const tString& settleDate,
+		const tString& symbol, const tString& currency, int quantity,
+		double price, const char* transactionType, double totalAbs
 	);
 
-	int         InRow;			// 1-based row in the input file (for warnings).
-	tString     TradeDate;		// Trade date, ISO 8601 "YYYY-MM-DD".
-	tString     SettleDate;		// Settlement date, ISO 8601 "YYYY-MM-DD".
-	tString     Symbol;			// Instrument code (ticker).
-	tString     Currency;		// Price currency of the trade (part of the (ticker, currency) market key).
-	int         Quantity;		// Signed whole number of units; a Sell is negative.
-	double      Price;			// Price per unit, in the trade's currency.
+	int         InRow;				// 1-based row in the input file (for warnings).
+	tString     TradeDate;			// Trade date, ISO 8601 "YYYY-MM-DD".
+	tString     SettleDate;			// Settlement date, ISO 8601 "YYYY-MM-DD".
+	tString     Symbol;				// Instrument code (ticker).
+	tString     Currency;			// Price currency of the trade (part of the (ticker, currency) market key).
+	int         Quantity;			// Signed whole number of units; a Sell is negative.
+	double      Price;				// Price per unit, in the trade's currency.
 	const char* TransactionType;	// "BUY" or "SELL".
-	double      TotalAbs;		// |Total Amount| (0 when the cell is empty).
-	tString     Brokerage;		// Computed fee; empty means the cell is left blank.
+	double      TotalAbs;			// |Total Amount| (0 when the cell is empty).
+	tString     Brokerage;			// Computed fee; empty means the cell is left blank.
 
 	// |Quantity| (the sign is irrelevant to the fee maths).
 	int AbsQuantity() const;
@@ -60,10 +53,7 @@ struct Trade : tLink<Trade>
 	double GrossValue() const;
 
 	// The day number of the trade date, for chronological comparison.
-	int DayNum() const
-	{
-		return DateToDayNum(TradeDate);
-	}
+	int DayNum() const																									{ return DateToDayNum(TradeDate); }
 };
 
 
@@ -75,17 +65,11 @@ struct Trade : tLink<Trade>
 
 inline BMO2SS::Trade::Trade
 (
-	int inRow,
-	const tString& tradeDate,
-	const tString& settleDate,
-	const tString& symbol,
-	const tString& currency,
-	int quantity,
-	double price,
-	const char* transactionType,
-	double totalAbs
-)
-	: InRow(inRow),
+	int inRow, const tString& tradeDate, const tString& settleDate,
+	const tString& symbol, const tString& currency, int quantity,
+	double price, const char* transactionType, double totalAbs
+) :
+	InRow(inRow),
 	TradeDate(tradeDate),
 	SettleDate(settleDate),
 	Symbol(symbol),
