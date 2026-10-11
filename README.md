@@ -23,7 +23,7 @@ BmoIL2ShareSight reconstructs broker fees that are embedded in the "Total Amount
 
 Transactions are processed from **oldest to newest** (the CSV is sorted newest-first, so the array is iterated in reverse). Each transaction is **submitted** to every currently open order in succession. An order decides independently what to do:
 
-1. **Close check (date-driven):** If the current date is *after* the order's opening date, and the orders's accumulated fee is in the valid range (`$0 < fee ≤ threshold`), the order **closes immediately**. The transaction is *not* consumed, even if it matches the order's ticker.
+1. **Close check (date-driven):** If the current date is *after* the order's opening date, and the order's accumulated fee is in the valid range (`$0 < fee ≤ threshold`), the order **closes immediately**. The transaction is *not* consumed, even if it matches the order's ticker.
 2. **Max-lookahead check:** If the date span exceeds the configured maximum (default 7 days), the order is **force-closed** regardless of the fee value.
 3. **Consume:** Only if the order remains open *and* the transaction matches the order (same ticker, direction, and currency) is it absorbed into the order. Direction means _buy_ or _sell_.
 4. **Open new order:** If no order consumes the transaction, a new order is opened for it.
