@@ -601,8 +601,6 @@ bool BMO2SS::PromptForMarket
 		markets.Append(entry);
 
 		tPrintf("Recorded %s %s (ShareSight Market Code: %s).\n", key.Chr(), menu[index - 1].Mic, menu[index - 1].Code);
-		tPrintf("Config file:\n%s\n", ConfigFile().Chr());
-
 		return true;
 	}
 
@@ -1108,13 +1106,12 @@ int main(int argc, char** argv)
 
 		if (!BMO2SS::CanPromptForMarket())
 		{
-			tPrintf("Error: no market code is recorded for %s, and stdin is not\n",
-					pair.Chr());
+			tPrintf("Error: no market code is recorded for %s, and stdin is not\n", pair.Chr());
 			tPrintf("interactive.\n");
 			tPrintf("Record it in the config file next to the executable\n");
 			tPrintf("(s-expr format). Supported MICs:\n");
 			tPrintf("XTSE, XTSX, NEOE, XNAS, XNYS, ARCX (see Data/Readme.txt).\n");
-			tPrintf("Config file:\n%s\n", BMO2SS::ConfigFile().Chr());
+			tPrintf("Config file:\n%s\n", tSystem::tGetFileName(BMO2SS::ConfigFile()).Chr());
 			return 1;
 		}
 
@@ -1127,9 +1124,7 @@ int main(int argc, char** argv)
 
 	// Compute the fees (reconstructing multi-trade orders), then write the rows back in input order.
 	if (!BMO2SS::ComputeBrokerages(trades, config.FeeThreshold, config.LookaheadDays))
-	{
 		return 1;
-	}
 
 	int outRow = 1;
 	int written = 0;
@@ -1198,8 +1193,7 @@ int main(int argc, char** argv)
 	if (ignoredRows > 0)
 		tPrintf("Info    : Ignored %d row(s) for tickers on the ignore list.\n", ignoredRows);
 
-	if ((droppedNorbert > 0) || (ignoredRows > 0))
-		tPrintf("Config  : %s\n", BMO2SS::ConfigFile().Chr());
+	tPrintf("Saved   : %s\n", tSystem::tGetFileName(BMO2SS::ConfigFile()).Chr());
 
 	tPrintf("Success : Converted %d Buy/Sell row(s); %d row(s) skipped.\n", written, skipped);
 	return 0;
