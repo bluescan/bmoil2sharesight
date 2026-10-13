@@ -8,6 +8,22 @@ Investorline (at least as of Oct 2026). The share-counts and dates and exchange
 rates etc are all fictional. The tickers are real, the transactions are not.
 
 ________________________________________________________________________________
+TransactionHistoryTest_2026-01-01_To_2026-12-31_sharesight.csv
+
+The results after processing TransactionHistoryTest_2026-01-01_To_2026-12-31.csv
+
+________________________________________________________________________________
+TransactionExample.csv
+
+A simple example showing a (fictional) limit order for SPYD filled by 2 trades.
+
+________________________________________________________________________________
+TransactionExample_sharesight.csv
+
+The results after processing TransactionExample.csv showing the correct $9.95
+fee on the trade for 189 units.
+
+________________________________________________________________________________
 bulk_trades.csv
 
 This is the format that ShareSight expects. It is a template downloaded from
