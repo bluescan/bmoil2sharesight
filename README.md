@@ -1,17 +1,24 @@
 # bmoil2sharesight
-BmoIL2ShareSight is a small command-line tool to convert Investorline CSV files to a format ShareSight can understand. Handles multi-trade orders by grouping them together to avoid negative fees.
+BmoIL2ShareSight is a small command-line tool to convert Investorline CSV files to a format ShareSight understands. 
 
 ## Introduction
 
-Run the `bmoil2sharesight` executable from a command prompt or shell. It prints its name and version number:
-* `BmoIL2ShareSight V0.1.0`
+The problem this tool solves is two-fold:
+
+1. BMO Investorline 2.0 does not export an 'Order ID' or something similar when multiple transactions are executed for the same order. This happens quite often when you place a limit order and parts of it get filled at different times and for different prices.
+2. A naive ShareSight import script will compute the transaction fees incorrectly due to where Investorline places the costs for each transaction that belongs to a single order.
+
+It is worth noting that this is the state as of Oct 12, 2026 as both platforms are actively being improved/developed. This tool handles multi-trade orders by determining the order grouping to avoid negative fees. `bmoil2sharesight` is a command-line tool that may be run from a command prompt or shell. The simplest invocation is `bmoil2sharesight input_transactions_from_il.csv` which will generate a similarly-named csv that may be imported to ShareSight.
+
 
 Usage:
 ```
 bmoil2sharesight.exe <input.csv> <output.csv>
 ```
 
-The input file is an Investorline transaction history export (CSV, sorted newest-first). The output file is a ShareSight-compatible CSV.
+The input file is an Investorline transaction history export (CSV, sorted newest-first). The output file is a ShareSight-compatible CSV and is optional.
+`bmoil2sharesight -h`  will print some help instructions and without any arguments will print the name and version number: `BmoIL2ShareSight V0.2.0`
+
 
 ## Fee Grouping
 
