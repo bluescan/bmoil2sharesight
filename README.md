@@ -8,7 +8,13 @@ The problem this tool solves is two-fold:
 1. BMO Investorline 2.0 does not export an 'Order ID' or something similar when multiple transactions are executed for the same order. This happens quite often when you place a limit order and parts of it get filled at different times and for different prices.
 2. A naive ShareSight import script will compute the transaction fees incorrectly due to where Investorline places the costs for each transaction that belongs to a single order.
 
-It is worth noting that this is the state as of Oct 12, 2026 as both platforms are actively being improved/developed. This tool handles multi-trade orders by determining the order grouping to avoid negative fees. `bmoil2sharesight` is a command-line tool that may be run from a command prompt or shell. The simplest invocation is `bmoil2sharesight input_transactions_from_il.csv` which will generate a similarly-named csv that may be imported to ShareSight.
+It is worth noting that this is the state as of Oct 12, 2026. Both platforms are actively being improved/developed so these behaviours may change in the future.
+
+This tool handles multi-trade orders by determining the order grouping to avoid negative fees. `bmoil2sharesight` is a command-line tool that may be run from a command prompt or shell. The simplest invocation is:
+
+`bmoil2sharesight input_transactions_from_il.csv`
+
+which will generate a similarly-named csv that may be imported to ShareSight.
 
 
 Usage:
@@ -16,15 +22,43 @@ Usage:
 bmoil2sharesight.exe <input.csv> <output.csv>
 ```
 
-The input file is an Investorline transaction history export (CSV, sorted newest-first). The output file is a ShareSight-compatible CSV and is optional.
-`bmoil2sharesight -h`  will print some help instructions and without any arguments will print the name and version number: `BmoIL2ShareSight V0.2.0`
+The input file is an Investorline transaction history export. The output file is a ShareSight-compatible CSV. If you don't specify the output a reasonable name will be generated for you.
+
+`bmoil2sharesight -h`
+
+will print some help text.
 
 
 ## Fee Grouping
 
-Investorline exports do not contain order IDs or any way to definitively accociate which transactions belong to which orders. It is an unfortunate oversight (at least as of October, 2026). This is why BmoIL2ShareSight reconstructs the orders using heuristics -- it hasn't gotten it wrong yet, but if it did the fee amounts and trade details would still balance correctly at the macro-scale. No incorrect information is introduced.
+Investorline exports do not contain order IDs or any way to definitively identify trades that belong to a specific order (at least as of October, 2026). BmoIL2ShareSight reconstructs the orders using heuristics so it can assign a single correct fee to all trades of a single order -- it hasn't gotten it wrong yet, but if it did the fee amounts and trade details would still balance correctly at the macro-scale. No incorrect information is introduced.
 
-BmoIL2ShareSight reconstructs broker fees that are embedded in the "Total Amount" column of an Investorline export. When an order is split across multiple rows (trades) — as happens with limit orders that fill in parts across multiple days — the fee must be assigned to the order as a whole rather than to each individual trade.
+Here is an example input csv file (amounts, dates, and tickers are fictional)
+
+```
+Transaction Type=ALL,Product Type=All,Symbol=,From=2026-01-01,To=2026-12-31,,,,,
+Transaction Date,Settlement Date,Activity Description,Description,Symbol,Quantity,Price,Price Currency,Total Amount,Total Currency
+----------------,---------------,--------------------,-----------,------,--------,-----,--------------,------------,--------------
+2026-12-31,2026-11-17,Buy,Vanguard FTSE Emerging Markets ETF,VWO,43,58.90,USD,-2532.70,USD
+2026-08-06,2026-08-07,Buy,State Street SPDR Portfolio S&P 500 High Dividend ETF,SPYD,203,41.20,USD,0,USD
+2026-08-06,2026-08-07,Buy,State Street SPDR Portfolio S&P 500 High Dividend ETF,SPYD,189,41.20,USD,-16160.35,USD
+2026-06-05,2026-06-08,Buy,iShares MSCI Belgium ETF,EWK,7,55.20,USD,-396.35,USD
+```
+
+As you can see 203 shares of SPYD at $41.20 does not cost $0.00. That would yield a _fee_ of $8363.60. The next line is equally incorrect but in the opposite direction: 189 * $41.20 is $7786.80, not $16169.35. So, free shares on the first, and a huge overcharge on the second. What's going on here is both of these transactions are from the same limit order. The _totals_ work out: $16160.35 - (203 * $41.20) - (189 * $41.20) = $9.95. That's the actual fee. Yay. Incidentally I didn't factor out the $41.20 because there's no reason these prices actually need to be identical. In practice they will be slightly different, but the export only contains 2 decimal places so you may not always 'see' it.
+
+The output from `BmoIL2ShareSight` looks like this:
+
+```
+Trade Date,Instrument Code,Market Code,Quantity,Price,Transaction Type,Exchange Rate (optional),Brokerage (optional),Brokerage Currency (optional),Comments (optional)
+2026-12-31,VWO,NYSE,43,58.9000,BUY,,,,
+2026-08-06,SPYD,NYSE,203,41.2000,BUY,,,,
+2026-08-06,SPYD,NYSE,189,41.2000,BUY,,9.95,,
+2026-06-05,EWK,NYSE,7,55.2000,BUY,,9.95,,
+```
+
+As you can see the VWO was no-fee and the other 2 orders have a $9.95 fee each. Note that the transactions themselves are _not_ combined as it would make confirming transactions in ShareSight arduous and you would need to compute a weighted average cost when the prices don't match. Note also that the fee was attributed to the 189 unit buy -- this is because the 189 unit trade had the largest cost associated with it in the original data. This is the _fee carrying trade_. It needs to go somewhere and this made the most sense (distributing the fee would be... wierd, even if correct).
+
 
 ### Algorithm
 
