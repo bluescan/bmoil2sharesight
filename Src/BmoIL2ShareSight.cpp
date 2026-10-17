@@ -31,7 +31,8 @@
 // allowing for display rounding) and <= FeeThreshold (default $100). If a trade's fee is out of range (negative,
 // above the threshold, or the total is zero), an order is opened; subsequent trades with the same ticker, direction
 // and currency are absorbed (up to MaxLookaheadDays, default 7) until the fee closes. Multiple orders can be open at
-// the same time. The fee is placed on the trade that closes the order (the "finalizing" trade). A standalone trade
+// the same time. The fee is placed on the trade that closes the order (the "finalizing" trade) -- a fee that
+// rounds to 0.00 (or a small negative display artifact) is still written, as 0.00. A standalone trade
 // whose fee is already in range is a single-trade order.
 //
 // The fee for an order:

@@ -1,0 +1,3 @@
+Trade Date,Instrument Code,Market Code,Quantity,Price,Transaction Type,Exchange Rate (optional),Brokerage (optional),Brokerage Currency (optional),Comments (optional)
+2026-05-05,VWO,NYSE,100,50.0000,BUY,,,,
+2026-05-05,VWO,NYSE,100,50.0000,BUY,,0.00,,

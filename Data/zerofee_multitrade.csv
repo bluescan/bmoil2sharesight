@@ -1,0 +1,5 @@
+Transaction Type=ALL,Product Type=All,Symbol=,From=2026-01-01,To=2026-12-31,,,,,
+Transaction Date,Settlement Date,Activity Description,Description,Symbol,Quantity,Price,Price Currency,Total Amount,Total Currency
+----------------,---------------,--------------------,-----------,------,--------,-----,--------------,------------,--------------
+2026-05-05,2026-05-06,Buy,Vanguard FTSE Emerging Markets ETF,VWO,100,50.00,USD,0,USD
+2026-05-05,2026-05-06,Buy,Vanguard FTSE Emerging Markets ETF,VWO,100,50.00,USD,-10000.00,USD

@@ -1,5 +1,5 @@
 Trade Date,Instrument Code,Market Code,Quantity,Price,Transaction Type,Exchange Rate (optional),Brokerage (optional),Brokerage Currency (optional),Comments (optional)
-2026-12-31,VWO,NYSE,43,58.9000,BUY,,,,
+2026-12-31,VWO,NYSE,43,58.9000,BUY,,0.00,,
 2026-08-06,SPYD,NYSE,203,41.2000,BUY,,,,
 2026-08-06,SPYD,NYSE,189,41.2000,BUY,,9.95,,
 2026-06-05,EWK,NYSE,7,55.2000,BUY,,9.95,,

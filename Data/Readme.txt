@@ -24,6 +24,19 @@ The results after processing TransactionExample.csv showing the correct $9.95
 fee on the trade for 189 units.
 
 ________________________________________________________________________________
+zerofee_multitrade.csv
+
+A simple example showing a (fictional) order for VWO filled by 2 trades with a
+total fee of $0.00.
+
+________________________________________________________________________________
+zerofee_multitrade_sharesight.csv
+
+The results after processing zerofee_multitrade.csv showing the $0.00 fee is
+still written, on the trade with the greatest |Total Amount|, while the sibling
+trade is left blank.
+
+________________________________________________________________________________
 bulk_trades.csv
 
 This is the format that ShareSight expects. It is a template downloaded from

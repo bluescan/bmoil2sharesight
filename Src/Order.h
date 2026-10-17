@@ -37,7 +37,7 @@ public:
 	double MaxTotal;	// Running MAX of |Total Amount| (carrier selection).
 	Trade* FeeCarrier;	// The max-|Total Amount| trade (ties -> last) that will receive the fee.
 	bool Closed;		// True once finalised (no longer absorbs trades).
-	bool Place;			// True when the fee is in range and non-zero (the projection pass writes it).
+	bool Place;			// True when the fee is in range (the projection pass writes it; a fee of 0.00 is written too).
 	double PlacedFee;	// The rounded fee to place (meaningful only when Place is true).
 
 	// Set the identity from the first trade and accumulate it.
@@ -59,7 +59,8 @@ public:
 	bool IsClosed() const			{ return Closed; }
 
 	// Finalise the order (it will no longer absorb trades). When 'place' is true the fee is in range and we record
-	// it (blanking it if it rounds to ~0); otherwise the fee is left blank.
+	// it (a fee that rounds to 0.00 -- or a small negative artifact -- is written as 0.00); otherwise the fee is
+	// left blank.
 	void Finalize(bool place, double feeThreshold);
 };
 
@@ -132,7 +133,12 @@ inline void BMO2SS::Order::Finalize(bool place, double feeThreshold)
 	if (place && InRange(feeThreshold))
 	{
 		PlacedFee = std::round(Fee() * 100.0) / 100.0;
-		Place = (PlacedFee > 0.005);
+		// A zero fee is still written (ShareSight would default it to zero anyway, but an explicit 0.00 is
+		// clearer); the small negative values InRange allows (display-rounding artifacts) clamp to 0.00.
+		if (PlacedFee < 0.0)
+			PlacedFee = 0.0;
+
+		Place = true;
 	}
 	else
 	{

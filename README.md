@@ -51,7 +51,7 @@ The output from `BmoIL2ShareSight` looks like this:
 
 ```
 Trade Date,Instrument Code,Market Code,Quantity,Price,Transaction Type,Exchange Rate (optional),Brokerage (optional),Brokerage Currency (optional),Comments (optional)
-2026-12-31,VWO,NYSE,43,58.9000,BUY,,,,
+2026-12-31,VWO,NYSE,43,58.9000,BUY,,0.00,,
 2026-08-06,SPYD,NYSE,203,41.2000,BUY,,,,
 2026-08-06,SPYD,NYSE,189,41.2000,BUY,,9.95,,
 2026-06-05,EWK,NYSE,7,55.2000,BUY,,9.95,,
@@ -76,7 +76,7 @@ After all transactions are processed, any remaining open orders are finalized: I
 - **BUY:** `fee = Σ|Total Amount| − Σ(|Quantity| × Price)`
 - **SELL:** `fee = Σ(|Quantity| × Price) − Σ|Total Amount|`
 
-A fee is "in range" when it is **greater than $0** (or a small epsilon) and **at most the fee threshold** (default $100). This handles both the zero-total trade case (where one row records no cost, and the companion row carries the combined cost plus fee) and multi-trade fills across multiple days.
+A fee is "in range" when it is **at least $0** (or a small epsilon, allowing for display rounding) and **at most the fee threshold** (default $100). This handles both the zero-total trade case (where one row records no cost, and the companion row carries the combined cost plus fee) and multi-trade fills across multiple days. A fee that rounds to 0.00 is written to the output as 0.00.
 
 ### Configuration
 
